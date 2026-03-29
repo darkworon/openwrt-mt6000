@@ -6,6 +6,8 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 5 * * 1'  # каждый понедельник в 05:00 UTC (после sync-forks в 03:00)
   workflow_dispatch:
     inputs:
       upload_release:
