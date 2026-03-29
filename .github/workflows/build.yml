@@ -156,17 +156,28 @@ jobs:
           echo "=== Build artifacts ==="
           ls -lh output/ || echo "No artifacts found"
 
-      - name: Upload firmware
-        uses: actions/upload-artifact@v4
-        with:
-          name: openwrt-mt6000-${{ github.sha }}
-          path: output/
-          if-no-files-found: warn
-          retention-days: 30
+      - name: Generate release tag
+        if: github.ref == 'refs/heads/main'
+        id: tag
+        run: |
+          TAG="build-$(date -u +%Y.%m.%d-%H%M)"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Release tag: $TAG"
 
-      - name: Create release (on tag)
-        if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.upload_release == 'true'
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "OpenWrt MT6000 ${{ steps.tag.outputs.tag }}"
+          body: |
+            Auto-release from main branch build.
+
+            **Upstream:** openwrt/openwrt main @ ${{ github.sha }}
+            **Patches:** pesa1234 kernel (RSS/WED) + mt76 (ATF/iBF)
+            **DAE:** eBPF kernel params included
+
+            Flash via: LuCI → System → Backup/Flash Firmware
           files: output/*
-          generate_release_notes: true
+          fail_on_unmatched_files: false
+          generate_release_notes: false
