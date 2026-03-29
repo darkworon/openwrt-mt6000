@@ -2,7 +2,7 @@ name: Sync forks with pesa1234 upstream
 
 on:
   schedule:
-    - cron: '0 3 * * 1'
+    - cron: '0 3 * * 5'  # каждую пятницу в 03:00 UTC (перед сборкой в 05:00)
   workflow_dispatch:
 
 permissions:

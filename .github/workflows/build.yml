@@ -7,7 +7,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '0 5 * * 1'  # каждый понедельник в 05:00 UTC (после sync-forks в 03:00)
+    - cron: '0 5 * * 5'  # каждую пятницу в 05:00 UTC (готово к субботе)
   workflow_dispatch:
     inputs:
       upload_release:
