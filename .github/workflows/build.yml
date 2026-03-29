@@ -161,20 +161,67 @@ jobs:
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "Release tag: $TAG"
 
+      - name: Generate release notes
+        if: github.ref == 'refs/heads/main'
+        id: notes
+        run: |
+          cd mt6000-overlay
+
+          # Upstream SHA
+          OPENWRT_SHA=$(git -C ../openwrt rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          PESA_SHA=$(git ls-remote https://github.com/pesa1234/openwrt refs/heads/next-r4.8.0.rss.mtk 2>/dev/null | cut -c1-7 || echo "unknown")
+
+          # Patch stats
+          KERNEL_COUNT=$(ls patches/kernel/*.patch 2>/dev/null | wc -l | tr -d ' ')
+          MT76_COUNT=$(ls patches/mt76/*.patch 2>/dev/null | wc -l | tr -d ' ')
+
+          # What changed since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            CHANGES=$(git log ${LAST_TAG}..HEAD --oneline -- patches/ config/ files/ 2>/dev/null | head -20)
+          else
+            CHANGES="Initial build"
+          fi
+
+          # Patch groups summary
+          RSS_COUNT=$(ls patches/kernel/999-27*.patch 2>/dev/null | wc -l | tr -d ' ')
+          WED_COUNT=$(ls patches/kernel/999-99*.patch 2>/dev/null | wc -l | tr -d ' ')
+          MT76_ATF=$(ls patches/mt76/200*.patch patches/mt76/251*.patch 2>/dev/null | wc -l | tr -d ' ')
+
+          NOTES="## Что включено в этой сборке
+
+          ### Патчи pesa1234
+          - 🔀 **RSS** (Receive Side Scaling): ${RSS_COUNT} патчей — 4 Rx rings, +30-40% ethernet throughput
+          - 🛠️ **WED/misc fixes**: ${WED_COUNT} патчей — hardware WiFi offload, jumbo frames, NAPI tuning
+          - 📡 **mt76** (WiFi драйвер): ${MT76_COUNT} патчей — ATF, iBF beamforming, VHT 256QAM 2.4GHz
+          - ⚙️ **advanced_setup**: IRQ affinity + RPS autotuning для GL-MT6000
+
+          ### DAE (eBPF transparent proxy)
+          Включены kernel параметры: CGROUPS, KPROBES, BTF, BPF_STREAM_PARSER, NET_SCH_INGRESS
+
+          ### Upstream
+          - openwrt/openwrt @ \`${OPENWRT_SHA}\`
+          - pesa1234 next-r4.8.0.rss.mtk @ \`${PESA_SHA}\`
+
+          ### Изменения с прошлого релиза
+          \`\`\`
+          ${CHANGES:-Нет изменений в patches/config/files}
+          \`\`\`
+
+          ---
+          **Прошивать:** LuCI → System → Backup/Flash Firmware → Keep settings: по желанию"
+
+          # Записать в файл (многострочный output)
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: "OpenWrt MT6000 ${{ steps.tag.outputs.tag }}"
-          body: |
-            Auto-release from main branch build.
-
-            **Upstream:** openwrt/openwrt main @ ${{ github.sha }}
-            **Patches:** pesa1234 kernel (RSS/WED) + mt76 (ATF/iBF)
-            **DAE:** eBPF kernel params included
-
-            Flash via: LuCI → System → Backup/Flash Firmware
+          body: ${{ steps.notes.outputs.NOTES }}
           files: output/*
           fail_on_unmatched_files: false
-          generate_release_notes: false

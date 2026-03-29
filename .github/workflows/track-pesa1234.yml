@@ -1,0 +1,157 @@
+name: Track pesa1234 patch updates
+
+on:
+  schedule:
+    - cron: '0 4 * * 5'  # пятница 04:00 UTC (после sync-forks, до сборки)
+  workflow_dispatch:
+
+jobs:
+  track:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone pesa1234/openwrt (shallow)
+        run: |
+          git clone --depth=1 --branch next-r4.8.0.rss.mtk \
+            https://github.com/pesa1234/openwrt.git /tmp/pesa1234
+
+      - name: Clone pesa1234/mt76 (shallow)
+        run: |
+          git clone --depth=1 https://github.com/pesa1234/mt76.git /tmp/pesa1234-mt76
+
+      - name: Compare kernel patches
+        id: kernel_diff
+        run: |
+          PESA_KERNEL=/tmp/pesa1234/target/linux/mediatek/patches-6.12
+          OUR_KERNEL=patches/kernel
+
+          # Патчи у pesa1234 которых нет у нас
+          NEW_PATCHES=""
+          CHANGED_PATCHES=""
+
+          for f in $PESA_KERNEL/999-*.patch; do
+            name=$(basename "$f")
+            if [ ! -f "$OUR_KERNEL/$name" ]; then
+              NEW_PATCHES="$NEW_PATCHES\n- ➕ NEW: \`$name\`"
+            else
+              # Проверить изменился ли
+              if ! diff -q "$f" "$OUR_KERNEL/$name" > /dev/null 2>&1; then
+                CHANGED_PATCHES="$CHANGED_PATCHES\n- 🔄 CHANGED: \`$name\`"
+              fi
+            fi
+          done
+
+          # Патчи у нас которых нет у pesa1234 (удалены upstream)
+          REMOVED_PATCHES=""
+          for f in $OUR_KERNEL/999-*.patch; do
+            name=$(basename "$f")
+            if [ ! -f "$PESA_KERNEL/$name" ]; then
+              REMOVED_PATCHES="$REMOVED_PATCHES\n- ❌ REMOVED from upstream: \`$name\`"
+            fi
+          done
+
+          PESA_SHA=$(git -C /tmp/pesa1234 rev-parse --short HEAD)
+
+          if [ -n "$NEW_PATCHES" ] || [ -n "$CHANGED_PATCHES" ] || [ -n "$REMOVED_PATCHES" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            {
+              echo "REPORT<<EOF"
+              echo "## Kernel patches (999-* series)"
+              echo "pesa1234 SHA: \`${PESA_SHA}\`"
+              echo ""
+              [ -n "$NEW_PATCHES" ] && printf "$NEW_PATCHES\n"
+              [ -n "$CHANGED_PATCHES" ] && printf "$CHANGED_PATCHES\n"
+              [ -n "$REMOVED_PATCHES" ] && printf "$REMOVED_PATCHES\n"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compare mt76 patches
+        id: mt76_diff
+        run: |
+          PESA_MT76=/tmp/pesa1234-mt76/patches
+          OUR_MT76=patches/mt76
+
+          NEW_PATCHES=""
+          CHANGED_PATCHES=""
+
+          if [ -d "$PESA_MT76" ]; then
+            for f in $PESA_MT76/*.patch; do
+              [ -f "$f" ] || continue
+              name=$(basename "$f")
+              if [ ! -f "$OUR_MT76/$name" ]; then
+                NEW_PATCHES="$NEW_PATCHES\n- ➕ NEW: \`$name\`"
+              else
+                if ! diff -q "$f" "$OUR_MT76/$name" > /dev/null 2>&1; then
+                  CHANGED_PATCHES="$CHANGED_PATCHES\n- 🔄 CHANGED: \`$name\`"
+                fi
+              fi
+            done
+          fi
+
+          if [ -n "$NEW_PATCHES" ] || [ -n "$CHANGED_PATCHES" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            {
+              echo "MT76_REPORT<<EOF"
+              echo "## mt76 patches"
+              [ -n "$NEW_PATCHES" ] && printf "$NEW_PATCHES\n"
+              [ -n "$CHANGED_PATCHES" ] && printf "$CHANGED_PATCHES\n"
+              echo "EOF"
+            } >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Issue if patches changed
+        if: steps.kernel_diff.outputs.has_changes == 'true' || steps.mt76_diff.outputs.has_changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const kernelReport = `${{ steps.kernel_diff.outputs.REPORT || '' }}`;
+            const mt76Report = `${{ steps.mt76_diff.outputs.MT76_REPORT || '' }}`;
+            const date = new Date().toISOString().split('T')[0];
+
+            const body = `## pesa1234 patch tracker — ${date}
+
+            Обнаружены изменения в upstream патчах pesa1234. Проверь и обнови \`patches/\` если изменения стабильны.
+
+            ${kernelReport}
+
+            ${mt76Report}
+
+            ### Как обновить
+            \`\`\`bash
+            git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/pesa1234/openwrt.git /tmp/pesa1234
+            cp /tmp/pesa1234/target/linux/mediatek/patches-6.12/999-*.patch patches/kernel/
+            # для mt76:
+            git clone --depth=1 https://github.com/pesa1234/mt76.git /tmp/pesa1234-mt76
+            cp /tmp/pesa1234-mt76/patches/*.patch patches/mt76/
+            git add patches/
+            git commit -m "chore: update pesa1234 patches ${date}"
+            git push
+            \`\`\`
+
+            > После push CI автоматически запустит сборку (patches/ изменились).
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[patch-tracker] pesa1234 patches updated — ${date}`,
+              body: body,
+              labels: ['patch-update']
+            });
+
+      - name: No changes
+        if: steps.kernel_diff.outputs.has_changes != 'true' && steps.mt76_diff.outputs.has_changes != 'true'
+        run: echo "✅ No patch changes detected. Our patches/ are in sync with pesa1234."
