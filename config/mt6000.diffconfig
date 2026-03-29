@@ -1,0 +1,16 @@
+# GL-iNet GL-MT6000 (MT7986A / Filogic 830) diffconfig
+# Used with: make defconfig
+
+CONFIG_TARGET_mediatek=y
+CONFIG_TARGET_mediatek_filogic=y
+CONFIG_TARGET_MULTI_PROFILE=n
+CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_glinet_gl-mt6000=y
+
+# WiFi drivers
+CONFIG_PACKAGE_kmod-mt7915e=y
+CONFIG_PACKAGE_kmod-mt7986-firmware=y
+CONFIG_PACKAGE_mt7986-wo-firmware=y
+
+# WED (Wireless Ethernet Dispatcher) hardware offload
+CONFIG_NET_MEDIATEK_SOC_WED=y
+CONFIG_RPS=y
