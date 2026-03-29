@@ -49,21 +49,49 @@ files/                    — overlay на дерево OpenWrt
 ## Как добавить патчи
 
 ```bash
-# Клонировать pesa1234
-git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/pesa1234/openwrt.git pesa1234
+# Клонировать форк darkworon/openwrt
+git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/darkworon/openwrt.git pesa1234-fork
 
 # Kernel patches
-cp pesa1234/target/linux/mediatek/patches-6.12/999-*.patch patches/kernel/
+cp pesa1234-fork/target/linux/mediatek/patches-6.12/999-*.patch patches/kernel/
 
 # mt76 patches
-cp pesa1234/package/kernel/mt76/patches/*.patch patches/mt76/
+cp pesa1234-fork/package/kernel/mt76/patches/*.patch patches/mt76/
 
 # advanced_setup overlay
-cp pesa1234/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup \
+cp pesa1234-fork/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup \
    files/target/linux/mediatek/filogic/base-files/etc/init.d/
 
 git add patches/ files/
 git commit -m "feat: add pesa1234 patches"
+git push
+```
+
+## Процесс обновления патчей
+
+Форки pesa1234 синхронизируются автоматически каждый понедельник:
+- `darkworon/openwrt` ← `pesa1234/openwrt` (ветка `next-r4.8.0.rss.mtk`)
+- `darkworon/mt76` ← `pesa1234/mt76`
+- `darkworon/packages` ← `pesa1234/packages` (ветка `next-r4.mtk`)
+- `darkworon/luci` ← `pesa1234/luci` (ветка `next-v4`)
+
+`build.yml` менять не нужно: сборка уже берёт патчи из локальной директории `patches/`, а не напрямую из upstream-репозиториев. Sync workflow обновляет форки, а перенос патчей в `patches/` остаётся ручным процессом или отдельным workflow.
+
+### Когда обновлять patches/
+
+Friday анализирует дельту еженедельно и рекомендует:
+- ✅ **Обновить** — патчи стабильны, CI собирается, нет WIP-коммитов
+- ⏳ **Подождать** — активные фиксы в том же патче, признаки WIP
+- ❌ **Пропустить** — патч конфликтует или ломает сборку
+
+Чтобы обновить `patches/` вручную:
+
+```bash
+git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/darkworon/openwrt.git pesa1234-fork
+cp pesa1234-fork/target/linux/mediatek/patches-6.12/999-*.patch patches/kernel/
+cp pesa1234-fork/package/kernel/mt76/patches/*.patch patches/mt76/  # из darkworon/mt76
+git add patches/
+git commit -m "chore: update pesa1234 patches $(date +%Y-%m-%d)"
 git push
 ```
 
