@@ -3,18 +3,13 @@ name: Build OpenWrt for GL-MT6000
 on:
   push:
     branches: [main]
-    tags: ['v*']
-  pull_request:
-    branches: [main]
+    paths:
+      - 'patches/**'
+      - 'config/**'
+      - 'files/**'
   schedule:
     - cron: '0 5 * * 5'  # каждую пятницу в 05:00 UTC (готово к субботе)
   workflow_dispatch:
-    inputs:
-      upload_release:
-        description: 'Upload as GitHub Release'
-        required: false
-        default: 'false'
-        type: boolean
 
 jobs:
   build:
