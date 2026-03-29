@@ -1,11 +1,18 @@
-name: Build OpenWrt MT6000
+name: Build OpenWrt for GL-MT6000
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      upload_release:
+        description: 'Upload as GitHub Release'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   build:
@@ -16,7 +23,7 @@ jobs:
       - name: Checkout this repo (patches + config)
         uses: actions/checkout@v4
         with:
-          path: meta
+          path: mt6000-overlay
 
       - name: Free disk space
         run: |
@@ -28,77 +35,79 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-            gettext git libncurses5-dev libssl-dev python3-setuptools rsync swig \
-            unzip zlib1g-dev file wget curl libelf-dev dwarves
+            build-essential clang flex bison g++ gawk gcc-multilib \
+            g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev \
+            file wget curl libelf-dev dwarves
 
-      - name: Checkout official openwrt/openwrt (main)
-        uses: actions/checkout@v4
-        with:
-          repository: openwrt/openwrt
-          ref: main
-          fetch-depth: 1
-          path: openwrt
-
-      - name: Cache downloads
+      - name: Cache ccache
         uses: actions/cache@v4
         with:
-          path: openwrt/dl/
-          key: openwrt-dl-${{ hashFiles('openwrt/feeds.conf.default') }}-${{ github.sha }}
+          path: ~/.ccache
+          key: ccache-mt6000-${{ github.sha }}
           restore-keys: |
-            openwrt-dl-${{ hashFiles('openwrt/feeds.conf.default') }}-
-            openwrt-dl-
+            ccache-mt6000-
 
-      - name: Cache build tools
+      - name: Cache OpenWrt tools/toolchain
         uses: actions/cache@v4
         with:
           path: |
             openwrt/staging_dir/host
             openwrt/staging_dir/hostpkg
-          key: openwrt-tools-${{ hashFiles('openwrt/feeds.conf.default') }}-v1
+          key: tools-openwrt-${{ hashFiles('openwrt/tools/**') }}
           restore-keys: |
-            openwrt-tools-
+            tools-openwrt-
 
-      - name: Apply patches from patches/
+      - name: Clone official OpenWrt (upstream)
         run: |
+          git clone --depth=1 --branch main \
+            https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
-          applied=0
-          skipped=0
-          for patch in ../meta/patches/*.patch; do
-            [ -f "$patch" ] || continue
-            name=$(basename "$patch")
-            # Skip stub patches (size < 200 bytes)
-            size=$(wc -c < "$patch")
-            if [ "$size" -lt 200 ]; then
-              echo "SKIP (stub): $name"
-              skipped=$((skipped+1))
-              continue
-            fi
-            if git apply --check "$patch" 2>/dev/null; then
-              git apply "$patch"
-              echo "OK: $name"
-              applied=$((applied+1))
-            else
-              echo "WARN: $name did not apply cleanly, skipping"
-              skipped=$((skipped+1))
-            fi
-          done
-          echo "Applied: $applied, Skipped/stub: $skipped"
+          echo "OpenWrt upstream SHA: $(git rev-parse HEAD)"
 
-      - name: Inject DAE kernel config
+      - name: Apply kernel patches (pesa1234 series)
         run: |
-          cat meta/config/dae-kernel.config >> openwrt/target/linux/mediatek/filogic/config-6.12
-          echo "=== DAE params appended ==="
-          grep -E "^CONFIG_(CGROUPS|KPROBES|BPF_EVENTS|BPF_STREAM_PARSER|DEBUG_INFO_BTF|NET_SCH_INGRESS|NET_CLS_BPF|NET_CLS_ACT)" \
-            meta/config/dae-kernel.config
+          PATCHES_DIR="mt6000-overlay/patches/kernel"
+          TARGET_DIR="openwrt/target/linux/mediatek/patches-6.12"
+          if [ -d "$PATCHES_DIR" ] && [ "$(ls -A $PATCHES_DIR)" ]; then
+            echo "Applying kernel patches..."
+            cp -v "$PATCHES_DIR"/*.patch "$TARGET_DIR/" 2>/dev/null || true
+            echo "Kernel patches applied: $(ls $PATCHES_DIR/*.patch 2>/dev/null | wc -l)"
+          else
+            echo "No kernel patches found in $PATCHES_DIR — skipping"
+          fi
+
+      - name: Apply mt76 patches
+        run: |
+          PATCHES_DIR="mt6000-overlay/patches/mt76"
+          TARGET_DIR="openwrt/package/kernel/mt76/patches"
+          if [ -d "$PATCHES_DIR" ] && [ "$(ls -A $PATCHES_DIR)" ]; then
+            echo "Applying mt76 patches..."
+            mkdir -p "$TARGET_DIR"
+            cp -v "$PATCHES_DIR"/*.patch "$TARGET_DIR/" 2>/dev/null || true
+            echo "mt76 patches applied: $(ls $PATCHES_DIR/*.patch 2>/dev/null | wc -l)"
+          else
+            echo "No mt76 patches found — skipping"
+          fi
+
+      - name: Apply overlay files (advanced_setup etc.)
+        run: |
+          OVERLAY_DIR="mt6000-overlay/files"
+          if [ -d "$OVERLAY_DIR" ] && [ "$(ls -A $OVERLAY_DIR)" ]; then
+            echo "Applying overlay files..."
+            cp -rv "$OVERLAY_DIR"/. openwrt/
+          else
+            echo "No overlay files — skipping"
+          fi
 
       - name: Copy diffconfig
         run: |
-          cp meta/config/mt6000.diffconfig openwrt/.config
+          cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
 
       - name: Update feeds
         run: |
           cd openwrt
+          # Standard OpenWrt feeds (no pesa1234 dependency)
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
@@ -107,52 +116,57 @@ jobs:
           cd openwrt
           make defconfig
 
-      - name: Verify DAE kernel params in expanded config
+      - name: Verify DAE kernel config
         run: |
           cd openwrt
           echo "=== DAE kernel params check ==="
-          for param in CONFIG_CGROUPS CONFIG_CGROUP_BPF CONFIG_KPROBES CONFIG_KPROBE_EVENTS \
-                       CONFIG_BPF_EVENTS CONFIG_BPF_STREAM_PARSER CONFIG_NET_SCH_INGRESS \
-                       CONFIG_NET_CLS_BPF CONFIG_NET_CLS_ACT CONFIG_DEBUG_INFO_BTF; do
-            val=$(grep "^${param}[= ]" .config 2>/dev/null || echo "NOT SET")
+          for param in CONFIG_CGROUPS CONFIG_KPROBES CONFIG_DEBUG_INFO_BTF \
+                       CONFIG_BPF_STREAM_PARSER CONFIG_NET_SCH_INGRESS \
+                       CONFIG_NET_CLS_BPF CONFIG_NET_CLS_ACT CONFIG_BPF_EVENTS; do
+            val=$(grep "^$param" .config 2>/dev/null || echo "NOT SET")
             echo "  $param = $val"
           done
 
       - name: Build tools & toolchain
         run: |
           cd openwrt
-          make -j$(nproc) tools/install toolchain/install V=s 2>&1 | \
-            grep -E "^(make\[|ERROR|WARNING|---)" || true
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
+            tools/install toolchain/install 2>&1 | \
+            grep -E "^(make\[|ERROR|WARNING)" | tail -20 || true
 
-      - name: Build target kernel
+      - name: Build target + packages
         run: |
           cd openwrt
-          make -j$(nproc) target/compile V=s 2>&1 | \
-            grep -E "^(make\[|ERROR|WARNING)" || true
-
-      - name: Build packages
-        run: |
-          cd openwrt
-          make -j$(nproc) package/compile package/index V=s 2>&1 | \
-            grep -E "^(make\[|ERROR|WARNING)" || true
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
+            target/compile package/compile package/index 2>&1 | \
+            grep -E "^(make\[|ERROR|WARNING)" | tail -20 || true
 
       - name: Build firmware image
         run: |
           cd openwrt
-          make -j$(nproc) target/install V=s 2>&1 | \
-            grep -E "^(make\[|ERROR|WARNING)" || true
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
+            target/install 2>&1 | \
+            grep -E "^(make\[|ERROR|WARNING)" | tail -20 || true
 
       - name: Collect artifacts
         run: |
           mkdir -p output
-          find openwrt/bin/targets/mediatek/filogic -name "*.bin" -o -name "*.img.gz" 2>/dev/null | \
+          find openwrt/bin/targets -name "*.bin" -o -name "*.img" | \
             xargs -I{} cp {} output/ 2>/dev/null || true
-          ls -lh output/ || echo "No firmware files found"
+          echo "=== Build artifacts ==="
+          ls -lh output/ || echo "No artifacts found"
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: openwrt-mt6000-${{ github.run_number }}
+          name: openwrt-mt6000-${{ github.sha }}
           path: output/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 30
+
+      - name: Create release (on tag)
+        if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.upload_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: output/*
+          generate_release_notes: true

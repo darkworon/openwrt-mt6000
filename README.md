@@ -1,79 +1,74 @@
-# OpenWrt Custom Build for GL-iNet MT6000
+# OpenWrt для GL-MT6000
 
-Автоматическая сборка OpenWrt для роутера GL-iNet GL-MT6000 (MT7986A / Filogic 830).
+Автосборка OpenWrt для роутера GL.iNet MT6000 (MediaTek MT7986A, Filogic 830).
 
-## Архитектура
+## Стратегия
 
-**Upstream:** официальный [openwrt/openwrt](https://github.com/openwrt/openwrt) (ветка main)
-
-Патчи pesa1234 хранятся **в этом репо** как `patches/*.patch` и применяются в CI через `git apply`.  
-Это обеспечивает независимость от доступности форка pesa1234: если его ветка исчезнет — наша сборка продолжает работать.
+- **Upstream:** официальный [openwrt/openwrt](https://github.com/openwrt/openwrt) ветка `main`
+- **Патчи:** pesa1234 kernel + mt76 patches в `patches/` — копируются поверх upstream при сборке
+- **Overlay files:** `files/` — накладываются на дерево OpenWrt (advanced_setup и др.)
+- **Config:** `config/mt6000.diffconfig` — конфиг устройства + DAE kernel параметры
 
 ## Структура репо
 
 ```
-.github/workflows/
-  build.yml             — CI: checkout openwrt/openwrt → apply patches → build
 config/
-  mt6000.diffconfig     — TARGET_mediatek + glinet_gl-mt6000 + пакеты
-  dae-kernel.config     — DAE (eBPF) kernel параметры
+  mt6000.diffconfig       — конфиг сборки (target + DAE params + пакеты)
 patches/
-  REGISTRY.md           — реестр патчей с описанием
-  999-*.patch           — патчи из pesa1234 (stub → заменить реальными)
+  kernel/                 — патчи для target/linux/mediatek/patches-6.12/
+    README.md             — список патчей pesa1234 (RSS, WED, jumbo frames)
+    *.patch               — сами патчи (добавить из pesa1234/openwrt)
+  mt76/                   — патчи для package/kernel/mt76/patches/
+    README.md             — список патчей (WED TX, ATF, iBF, VHT 256QAM)
+    *.patch               — сами патчи
+files/                    — overlay на дерево OpenWrt
+  target/linux/mediatek/filogic/base-files/etc/init.d/
+    advanced_setup        — IRQ affinity, RPS, WED, ATF (из pesa1234)
+.github/workflows/
+  build.yml               — GitHub Actions CI
 ```
 
-## Что добавляется поверх upstream OpenWrt
+## Что даёт pesa1234 (через патчи)
 
-### Патчи ядра (из pesa1234/openwrt)
+- **RSS** (Receive Side Scaling) — 4 Rx rings, ~30-40% throughput boost
+- **WED** (Wireless Ethernet Dispatcher) — hardware WiFi offload
+- **HW-ATF** (Airtime Fairness) — fair WiFi scheduling
+- **iBF** (Implicit Beamforming) — better WiFi signal adaptation
+- **advanced_setup** — автонастройка IRQ affinity, RPS по ядрам для MT6000
+- **VHT 256QAM @ 2.4GHz** — максимальная скорость на 2.4GHz
 
-- **RSS (Receive Side Scaling):** 4 Rx rings для ethernet MT7986
-- **WED bugfixes:** hwrro double free, rx hang after SER, ring cleanup, WDMA
-- **NAPI:** poll weight 256, fix enable order
-- **Ethernet:** jumbo frames, rx buffer length, 2500Mbps rate limit
-- **Misc:** USB power control
+## DAE kernel параметры
 
-### DAE kernel параметры (config/dae-kernel.config)
+8 параметров не включены в upstream OpenWrt по умолчанию — добавлены в `config/mt6000.diffconfig`:
+- `CONFIG_CGROUPS=y`, `CONFIG_CGROUP_BPF=y`
+- `CONFIG_KPROBES=y`, `CONFIG_KPROBE_EVENTS=y`, `CONFIG_BPF_EVENTS=y`
+- `CONFIG_BPF_STREAM_PARSER=y`
+- `CONFIG_NET_SCH_INGRESS=m`, `CONFIG_NET_CLS_BPF=m`, `CONFIG_NET_CLS_ACT=y`
+- `CONFIG_DEBUG_INFO_BTF=y` (требует `dwarves` — добавлен в CI)
 
-Параметры ядра, необходимые для работы [daed](https://github.com/daeuniverse/daed) (eBPF transparent proxy):
-
-| Параметр | Назначение |
-|----------|-----------|
-| `CONFIG_CGROUPS=y` | cgroups |
-| `CONFIG_CGROUP_BPF=y` | BPF attachment к cgroups |
-| `CONFIG_KPROBES=y` | kprobes |
-| `CONFIG_KPROBE_EVENTS=y` | tracing через kprobes |
-| `CONFIG_BPF_EVENTS=y` | BPF tracing events |
-| `CONFIG_BPF_STREAM_PARSER=y` | sockmap / sk_skb |
-| `CONFIG_NET_SCH_INGRESS=m` | TC ingress |
-| `CONFIG_NET_CLS_BPF=m` | BPF classifier |
-| `CONFIG_NET_CLS_ACT=y` | TC actions |
-| `CONFIG_DEBUG_INFO_BTF=y` | BTF для CO-RE |
-
-## Скачать прошивку
-
-[Actions](../../actions) → последний успешный build → **Artifacts**.
-
-## Прошивка
-
-**LuCI → System → Backup/Flash Firmware** или:
-```bash
-sysupgrade -v openwrt-mediatek-filogic-glinet_gl-mt6000-*.bin
-```
-
-## Добавление реальных патчей
-
-Stub-патчи (`patches/*.patch`) нужно заменить реальным содержимым из pesa1234:
+## Как добавить патчи
 
 ```bash
-git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/pesa1234/openwrt.git pesa1234-src
-for f in patches/999-*.patch; do
-  name=$(basename "$f")
-  src="pesa1234-src/target/linux/mediatek/patches-6.12/$name"
-  [ -f "$src" ] && cp "$src" "$f" && echo "OK: $name"
-done
+# Клонировать pesa1234
+git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/pesa1234/openwrt.git pesa1234
+
+# Kernel patches
+cp pesa1234/target/linux/mediatek/patches-6.12/999-*.patch patches/kernel/
+
+# mt76 patches
+cp pesa1234/package/kernel/mt76/patches/*.patch patches/mt76/
+
+# advanced_setup overlay
+cp pesa1234/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup \
+   files/target/linux/mediatek/filogic/base-files/etc/init.d/
+
+git add patches/ files/
+git commit -m "feat: add pesa1234 patches"
+git push
 ```
 
-## Credits
+## CI
 
-- [pesa1234/openwrt](https://github.com/pesa1234/openwrt) — RSS/WED/ATF patches
-- [OpenWrt Project](https://openwrt.org)
+Actions → [Build OpenWrt for GL-MT6000](../../actions/workflows/build.yml)
+
+Артефакт доступен в Actions после сборки (~2-3 часа). Прошивать через LuCI → System → Flash Firmware.
