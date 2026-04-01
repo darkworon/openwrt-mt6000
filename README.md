@@ -1,150 +1,170 @@
 # openwrt-mt6000
 
-Custom OpenWrt build for **GL-iNet GL-MT6000** (Flint 2) с RSS, WED, DAE поддержкой.
+Автономная CI/CD система для сборки OpenWrt под **GL-iNet GL-MT6000** (Flint 2).
 
-## Цель
+## Зачем это нужно
 
-Независимая воспроизводимая сборка OpenWrt для GL-MT6000 на случай если форк pesa1234 перестанет поддерживаться.
+[pesa1234](https://github.com/pesa1234) поддерживает форк OpenWrt с кастомными патчами для MT6000 (RSS, WED, ATF). Это лучшая прошивка для Flint 2, но зависеть от одного человека рискованно — если он уйдёт, патчи устареют.
 
-Стратегия: **официальный openwrt/openwrt upstream** + патчи из pesa1234 как отдельный слой.
+**Цель:** независимая воспроизводимая сборка. Мы "воруем" наработки pesa1234 в виде патчей, храним у себя и собираем на официальном `openwrt/openwrt` upstream. Если pesa1234 исчезнет — у нас есть всё для продолжения.
 
 ---
 
-## Что внутри
+## Архитектура репозиториев
 
-### Патчи (`patches/`)
+```
+darkworon/openwrt-mt6000          ← этот репо (ПРИВАТНЫЙ)
+  │  исходники: патчи, конфиги, overlay, CI
+  │
+  ├─ feeds используют:
+  │    darkworon/packages          ← форк pesa1234/packages (ветка next-r4.mtk)
+  │    darkworon/luci              ← форк pesa1234/luci (ветка next-v4)
+  │
+  └─ CI публикует в:
+       darkworon/openwrt-mt6000-releases  ← (ПУБЛИЧНЫЙ)
+         ├─ GitHub Releases: прошивка .bin + пакеты .tar.gz (5 последних)
+         └─ GitHub Pages: APK index.json (ссылки на Release assets)
+```
 
-#### `patches/kernel/` — патчи ядра (серия 999-*)
+### Почему releases репо публичный
+
+GitHub Pages работает только на публичных репо (Free plan). Прошивка для конкретного железа — не секрет. Исходники (патчи, конфиги) — в приватном репо.
+
+---
+
+## Что внутри прошивки
+
+### Патчи ядра (`patches/kernel/` — серия 999-*)
 
 Кастомные патчи pesa1234 поверх официального OpenWrt kernel 6.12:
 
-| Патч | Описание |
-|------|----------|
-| `999-2700` | DTS mt7986: RSS IRQ-векторы в ethernet node |
-| `999-2701` | DTS mt7981: RSS IRQ-векторы |
-| `999-2710` | `mtk_eth_soc`: регистры RSS + LRO |
-| `999-2711` | `mtk_eth_soc`: полная реализация RSS (Receive Side Scaling) — 4 Rx rings, +30-40% ethernet throughput |
-| `999-2716` | `mtk_eth_soc`: конвертация cap_bit → u64 |
-| `999-2719` | NAPI poll weight → 256 (влияет на peak throughput SW path) |
-| `999-2725` | Увеличен дефолтный rx buffer length |
-| `999-2728` | Поддержка 2500Mbps rate limit |
-| `999-9901` | Fix RSS для mt7986 (Frank Wunderlich) |
-| `999-9902` | Disable RSS для mt7981 (другой chipset) |
-| `999-9903` | Fix ethtool hash function |
-| `999-9907` | `net_prefetch` для non-pagepool пути |
-| `999-9908` | Jumbo frame support |
-| `999-9909` | Jumbo frames для mt7981 |
-| `999-9910` | Fix NAPI enable order |
-| `999-9911` | WED fix: hwrro double free |
-| `999-9912` | WED fix: WED1 rx hang after SER |
-| `999-9913` | WED fix: ring cleanup при реинсерции модуля |
-| `999-9914` | WED fix: избежание двойной инициализации WDMA |
-| `999-9999` | USB power control |
+| Группа | Патчи | Эффект |
+|--------|-------|--------|
+| RSS (Receive Side Scaling) | 999-2700..2728 | +30-40% ethernet throughput, 4 Rx rings |
+| WED bugfixes | 999-9911..9914 | Hardware WiFi offload стабильность |
+| NAPI/misc | 999-9907..9910 | Jumbo frames, NAPI poll weight, buffer tuning |
+| USB | 999-9999 | USB power control |
 
-#### `patches/mt76/` — патчи WiFi драйвера mt76 (~93 патча)
+### Патчи WiFi (`patches/mt76/` — ~93 патча)
 
-- **WED TX support** (`2000-*`) — hardware WiFi offload
-- **HW-ATF для mt7986** (`2004-*`) — Airtime Fairness через железо
-- **iBF/eBF beamforming** (`1010-*`, `1012-*`, `1019-*`)
-- **VHT 2.4GHz 256QAM** (`0000_100-*`) — увеличенная скорость на 2.4GHz
-- **CSI support, air monitor, vendor commands** (`1001-*`, `1002-*`, `1014-*`)
-- **WED RX token lookup fix** (`9602-*`)
-- **Airtime fairness улучшения** (`9510-*`, `9512-*`)
+- **WED TX support** — hardware WiFi offload
+- **HW-ATF** — Airtime Fairness через железо
+- **iBF/eBF beamforming** — направленный сигнал
+- **VHT 256QAM на 2.4GHz** — повышенная скорость
+- **WED/CSI/vendor fixes** — различные исправления
 
 ### Overlay (`files/`)
 
-#### `files/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup`
-
-Кастомный init-скрипт pesa1234 (START=99), не существует в upstream OpenWrt. При старте:
-- Динамическое распределение **IRQ affinity** по ядрам CPU
-- **RPS** (Receive Packet Steering)
-- **WED hardware offload** (iptables FLOWOFFLOAD --hw)
-- **ATF / HW-ATF** (Airtime Fairness)
+**`advanced_setup`** — init-скрипт (START=99), не существует в upstream:
+- IRQ affinity по ядрам CPU
+- RPS (Receive Packet Steering)
+- WED hardware offload (iptables FLOWOFFLOAD --hw)
+- ATF/HW-ATF (Airtime Fairness)
 - USB speed/power control
-- **HQoS** (mtkhnat)
 
 ### Конфиг (`config/`)
 
-#### `config/mt6000.diffconfig`
+**`mt6000.diffconfig`:**
+- Target: `mediatek/filogic`, device: `glinet_gl-mt6000`
+- Пакеты: `dae`, `adguardhome`, `zerotier-one`, `kmod-nft-offload`
 
-Минимальный diffconfig для GL-MT6000:
-- `TARGET_mediatek`, `SUBTARGET_filogic`
-- `TARGET_DEVICE_glinet_gl-mt6000`
-- Пакеты: `dae`, `adguardhome`, `zerotier`, `kmod-nft-offload`
-
-#### `config/dae-kernel.config`
-
-Дополнительные kernel параметры для DAE (eBPF-based transparent proxy):
+**`dae-kernel.config`** — параметры ядра для DAE (eBPF transparent proxy):
 ```
-CONFIG_CGROUPS=y
-CONFIG_KPROBES=y
-CONFIG_DEBUG_INFO_BTF=y
-CONFIG_BPF_STREAM_PARSER=y
-CONFIG_NET_SCH_INGRESS=m
-CONFIG_NET_CLS_BPF=m
-CONFIG_NET_CLS_ACT=y
-CONFIG_BPF_EVENTS=y
+CONFIG_CGROUPS=y, CONFIG_KPROBES=y, CONFIG_DEBUG_INFO_BTF=y,
+CONFIG_BPF_STREAM_PARSER=y, CONFIG_NET_SCH_INGRESS=m,
+CONFIG_NET_CLS_BPF=m, CONFIG_NET_CLS_ACT=y, CONFIG_BPF_EVENTS=y
 ```
 
 ---
 
-## CI/CD
+## CI/CD Pipeline
 
 ### Расписание
 
-| Workflow | Когда | Что делает |
-|----------|-------|------------|
-| `track-pesa1234.yml` | Вс + Ср 04:00 UTC | Сравнивает патчи с pesa1234, создаёт Issue если есть новые/изменённые/удалённые |
-| `build.yml` | Пт 05:00 UTC | Полная сборка, создаёт GitHub Release с прошивкой |
+| Workflow | Триггер | Что делает |
+|----------|---------|------------|
+| `track-pesa1234.yml` | Вс + Ср 04:00 UTC, ручной | Проверяет обновления у pesa1234, создаёт Issue |
+| `build.yml` | Пт 05:00 UTC, push в patches/config/files, ручной | Полная сборка и публикация |
 
-### Как работает сборка (`build.yml`)
+### Как работает сборка (build.yml)
 
 ```
 1. Клонировать openwrt/openwrt:main (официальный upstream)
-2. Скопировать patches/kernel/*.patch → openwrt/target/linux/mediatek/patches-6.12/
-3. Скопировать patches/mt76/*.patch → openwrt/package/kernel/mt76/patches/
+2. Скопировать patches/kernel/*.patch → target/linux/mediatek/patches-6.12/
+3. Скопировать patches/mt76/*.patch → package/kernel/mt76/patches/
 4. Скопировать files/ → openwrt/ (advanced_setup и др.)
-5. Скопировать config/mt6000.diffconfig → openwrt/.config
-6. Вписать config/dae-kernel.config в openwrt/target/.../config-6.12
-7. Обновить feeds (стандартные openwrt feeds)
-8. make defconfig + make -j$(nproc)
-9. Создать GitHub Release с прошивкой
+5. feeds.conf → darkworon/packages:next-r4.mtk + darkworon/luci:next-v4
+6. make defconfig + проверка DAE параметров
+7. make tools + toolchain + target + packages + image
+8. Smoke test: firmware > 10MB, dae + zerotier в manifest
+9. Публикация Release в openwrt-mt6000-releases (прошивка + пакеты)
+10. Обновление APK index.json на GitHub Pages
+11. Ротация: оставить 5 последних релизов и Pages entries
+12. Telegram уведомление (✅/❌ + ссылка на release)
 ```
 
-### Как работает трекинг (`track-pesa1234.yml`)
+### Как работает трекинг (track-pesa1234.yml)
 
 ```
-1. Клонировать pesa1234/openwrt:next-r4.8.0.rss.mtk
-2. Клонировать pesa1234/mt76
-3. Сравнить patches/kernel/ с pesa1234/target/linux/mediatek/patches-6.12/999-*.patch
-4. Сравнить patches/mt76/ с pesa1234/package/kernel/mt76/patches/
-5. Если есть delta → создать GitHub Issue с подробным diff
+1. Найти последнюю ветку next-r4.*.rss.mtk у pesa1234 (динамически)
+2. Сравнить с .pesa1234-branch (что мы отслеживаем сейчас)
+3. Клонировать pesa1234/openwrt (актуальная ветка) и pesa1234/mt76
+4. Сравнить patches/kernel/ с pesa1234 999-* патчами
+5. Сравнить patches/mt76/ с pesa1234/mt76/patches/
+6. Сравнить feeds.conf.default
+7. Если есть delta → создать GitHub Issue с описанием и командами для обновления
 ```
+
+---
+
+## APK совместимость
+
+**Ключевое правило:** `kmod-*` пакеты привязаны к точному `vermagic` ядра (хеш конфига сборки). Пакеты от одного билда несовместимы с прошивкой другого билда.
+
+**Как мы решаем:**
+- `CONFIG_VERSION_REPO` зашивается в прошивку при сборке
+- Роутер с этой прошивкой автоматически обращается к APK репо **своего** билда
+- URL формат: `https://darkworon.github.io/openwrt-mt6000-releases/packages/{build-tag}/`
+- После sysupgrade: новая прошивка несёт новый URL
+
+**Ротация:** храним 5 последних билдов. Кто не обновлялся > 5 недель — теряет совместимый APK репо (нормально для snapshot-сборок).
+
+---
+
+## Secrets (в darkworon/openwrt-mt6000)
+
+| Secret | Описание |
+|--------|----------|
+| `TG_BOT_TOKEN` | @jarvis_vetva_bot токен — уведомления о билде |
+| `RELEASES_TOKEN` | GitHub PAT — для пуша в openwrt-mt6000-releases |
 
 ---
 
 ## Как обновить патчи вручную
 
-При появлении новых патчей у pesa1234 (track workflow создаст Issue):
+При появлении Issue от track workflow:
 
 ```bash
-# Клонировать pesa1234
-git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/pesa1234/openwrt.git /tmp/pesa1234
+# 1. Найти актуальную ветку
+BRANCH=$(gh api "repos/pesa1234/openwrt/branches?per_page=100" \
+  --jq '[.[].name | select(test("next-r[0-9]+\\.[0-9]+\\.[0-9]+\\.rss\\.mtk"))] | sort | last')
+
+# 2. Клонировать
+git clone --depth=1 --branch $BRANCH https://github.com/pesa1234/openwrt.git /tmp/pesa1234
 git clone --depth=1 https://github.com/pesa1234/mt76.git /tmp/pesa1234-mt76
 
-# Обновить kernel патчи (только серия 999-*)
+# 3. Обновить патчи
 cp /tmp/pesa1234/target/linux/mediatek/patches-6.12/999-*.patch patches/kernel/
-
-# Обновить mt76 патчи
 cp /tmp/pesa1234-mt76/patches/*.patch patches/mt76/
-
-# Обновить advanced_setup
 cp /tmp/pesa1234/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup \
    files/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup
 
-# Закоммитить
-git add patches/ files/
-git commit -m "chore: sync patches from pesa1234 $(date +%Y-%m-%d)"
+# 4. Обновить tracked branch
+echo "$BRANCH" > .pesa1234-branch
+
+# 5. Коммит
+git add patches/ files/ .pesa1234-branch
+git commit -m "chore: sync patches from pesa1234 $BRANCH $(date +%Y-%m-%d)"
 git push
 ```
 
@@ -152,25 +172,59 @@ git push
 
 ## Как установить прошивку
 
-1. Скачать последний release: https://github.com/darkworon/openwrt-mt6000/releases
-2. Файл: `openwrt-mediatek-filogic-glinet_gl-mt6000-squashfs-sysupgrade.bin`
-3. Через LuCI: System → Backup/Flash Firmware → Flash image
-4. Или через SSH: `scp firmware.bin root@192.168.1.1:/tmp/ && ssh root@192.168.1.1 "sysupgrade /tmp/firmware.bin"`
+1. Скачать из [Releases](https://github.com/darkworon/openwrt-mt6000-releases/releases) → `*-squashfs-sysupgrade.bin`
+2. **LuCI:** System → Backup/Flash Firmware → Flash image → выбрать `.bin`
+3. **SSH:** `scp firmware.bin root@192.168.1.1:/tmp/ && ssh root@192.168.1.1 "sysupgrade /tmp/firmware.bin"`
+4. Проверить sha256: `sha256sum firmware.bin` → сверить с `sha256sums` в assets
 
 ---
 
-## Зависимость от pesa1234
+## Bootstrap с нуля (если нужно пересоздать)
 
-Репо отслеживает ветку `next-r4.8.0.rss.mtk`:
-- `pesa1234/openwrt` — kernel + DTS патчи, advanced_setup
-- `pesa1234/mt76` — WiFi драйвер патчи
+```bash
+# 1. Создать приватный репо openwrt-mt6000
+gh repo create darkworon/openwrt-mt6000 --private
 
-Если pesa1234 перестанет обновляться:
-- Текущие патчи продолжат работать с близкими версиями upstream
-- При мажорном обновлении ядра (6.12 → 6.13+) может потребоваться ручная адаптация патчей
-- Серия `999-*` — кастомный код, в upstream не принят
-- mt76 патчи частично попадают в upstream со временем
+# 2. Создать публичный репо releases
+gh repo create darkworon/openwrt-mt6000-releases --public
+
+# 3. Включить Pages в releases репо (gh-pages ветка)
+gh api repos/darkworon/openwrt-mt6000-releases/pages -X POST \
+  --input - <<< '{"source":{"branch":"gh-pages","path":"/"}}'
+
+# 4. Убедиться что есть форки packages и luci
+# darkworon/packages (fork pesa1234/packages, ветка next-r4.mtk)
+# darkworon/luci (fork pesa1234/luci, ветка next-v4)
+
+# 5. Установить секреты
+gh secret set TG_BOT_TOKEN --repo darkworon/openwrt-mt6000 --body "<token>"
+gh secret set RELEASES_TOKEN --repo darkworon/openwrt-mt6000 --body "<github-pat>"
+
+# 6. Запустить первый билд
+gh workflow run build.yml --repo darkworon/openwrt-mt6000
+```
 
 ---
+
+## Техдолг
+
+| ID | Описание | Приоритет |
+|----|----------|-----------|
+| TD-001 | Выделить отдельного Telegram бота для build уведомлений (сейчас @jarvis_vetva_bot) | Low |
+| TD-002 | Зашить `CONFIG_VERSION_REPO` в `mt6000.diffconfig` (сейчас APK URL только в release notes) | Medium |
+| TD-003 | Настроить sync-workflow для darkworon/packages и darkworon/luci из pesa1234 (сейчас ручное обновление) | Medium |
+
+---
+
+## Связанные репозитории
+
+| Репо | Роль |
+|------|------|
+| [openwrt/openwrt](https://github.com/openwrt/openwrt) | Официальный upstream (клонируется при каждом билде) |
+| [pesa1234/openwrt](https://github.com/pesa1234/openwrt) | Источник патчей (отслеживается, не используется напрямую) |
+| [pesa1234/mt76](https://github.com/pesa1234/mt76) | Источник WiFi патчей (отслеживается) |
+| [darkworon/packages](https://github.com/darkworon/packages) | Наш форк feeds/packages |
+| [darkworon/luci](https://github.com/darkworon/luci) | Наш форк feeds/luci |
+| [darkworon/openwrt-mt6000-releases](https://github.com/darkworon/openwrt-mt6000-releases) | Прошивки и APK repo |
 
 *Последнее обновление: 2026-04-01*
