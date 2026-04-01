@@ -225,6 +225,8 @@ gh workflow run build.yml --repo darkworon/openwrt-mt6000
 | [pesa1234/mt76](https://github.com/pesa1234/mt76) | Источник WiFi патчей (отслеживается) |
 | [darkworon/packages](https://github.com/darkworon/packages) | Наш форк feeds/packages |
 | [darkworon/luci](https://github.com/darkworon/luci) | Наш форк feeds/luci |
+| [darkworon/openwrt-mt6000-immortalwrt-packages](https://github.com/darkworon/openwrt-mt6000-immortalwrt-packages) | Форк immortalwrt/packages — содержит пакет `dae` |
+| [darkworon/openwrt-mt6000-luci-app-dae](https://github.com/darkworon/openwrt-mt6000-luci-app-dae) | Форк sbwml/luci-app-dae — LuCI интерфейс для dae |
 | [darkworon/openwrt-mt6000-releases](https://github.com/darkworon/openwrt-mt6000-releases) | Прошивки и APK repo |
 
 *Последнее обновление: 2026-04-01*
