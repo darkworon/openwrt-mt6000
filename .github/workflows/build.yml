@@ -100,14 +100,20 @@ jobs:
             echo "No overlay files — skipping"
           fi
 
-      - name: Copy diffconfig
+      - name: Copy diffconfig and feeds
         run: |
           cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
+          # Используем наши форки feeds вместо upstream
+          cat > openwrt/feeds.conf.default << 'FEEDSEOF'
+          src-git packages https://github.com/darkworon/packages.git;next-r4.mtk
+          src-git luci https://github.com/darkworon/luci.git;next-v4
+          src-git routing https://git.openwrt.org/feed/routing.git
+          src-git telephony https://git.openwrt.org/feed/telephony.git
+          FEEDSEOF
 
       - name: Update feeds
         run: |
           cd openwrt
-          # Standard OpenWrt feeds (no pesa1234 dependency)
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
@@ -148,83 +154,230 @@ jobs:
             target/install 2>&1 | \
             grep -E "^(make\[|ERROR|WARNING)" | tail -20 || true
 
-      - name: Collect artifacts
+      - name: Collect artifacts and smoke test
         run: |
-          mkdir -p output
-          find openwrt/bin/targets -name "*.bin" -o -name "*.img" | \
-            xargs -I{} cp {} output/ 2>/dev/null || true
-          echo "=== Build artifacts ==="
-          ls -lh output/ || echo "No artifacts found"
+          mkdir -p output/firmware output/packages
+
+          # Прошивка
+          find openwrt/bin/targets -name "*.bin" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
+          find openwrt/bin/targets -name "sha256sums" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
+          find openwrt/bin/targets -name "*.manifest" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
+
+          # Пакеты (для APK repo)
+          rsync -av openwrt/bin/packages/ output/packages/ 2>/dev/null || true
+          rsync -av openwrt/bin/targets/mediatek/filogic/packages/ output/packages/targets/ 2>/dev/null || true
+
+          echo "=== Firmware artifacts ==="
+          ls -lh output/firmware/ || echo "No firmware found"
+
+          # Smoke test
+          echo "=== Smoke test ==="
+          FIRMWARE=$(ls output/firmware/*.bin 2>/dev/null | head -1)
+          if [ -z "$FIRMWARE" ]; then
+            echo "FAIL: no firmware .bin found"
+            exit 1
+          fi
+          SIZE=$(stat -c%s "$FIRMWARE")
+          if [ "$SIZE" -lt 10000000 ]; then
+            echo "FAIL: firmware too small ($SIZE bytes)"
+            exit 1
+          fi
+          echo "OK: firmware $FIRMWARE ($SIZE bytes)"
+
+          # Проверяем manifest на ключевые пакеты
+          MANIFEST=$(ls output/firmware/*.manifest 2>/dev/null | head -1)
+          if [ -n "$MANIFEST" ]; then
+            for pkg in dae zerotier-one; do
+              if grep -q "$pkg" "$MANIFEST"; then
+                echo "OK: $pkg present in manifest"
+              else
+                echo "WARN: $pkg not found in manifest"
+              fi
+            done
+          fi
 
       - name: Generate release tag
         if: github.ref == 'refs/heads/main'
         id: tag
         run: |
-          TAG="build-$(date -u +%Y.%m.%d-%H%M)"
+          OPENWRT_REV=$(git -C openwrt describe --always --tags 2>/dev/null || git -C openwrt rev-parse --short HEAD)
+          PESA_BRANCH=$(cat mt6000-overlay/.pesa1234-branch 2>/dev/null || echo "unknown")
+          TAG="build-$(date -u +%Y.%m.%d)-${OPENWRT_REV}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "pesa_branch=$PESA_BRANCH" >> $GITHUB_OUTPUT
           echo "Release tag: $TAG"
+
+      - name: Generate APK repo index for GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          PAGES_DIR="gh-pages-update"
+          mkdir -p "$PAGES_DIR/packages/$TAG"
+
+          # Копируем index.json (не .apk — они пойдут в Release assets)
+          find output/packages -name "index.json" | while read f; do
+            REL_PATH="${f#output/packages/}"
+            DEST="$PAGES_DIR/packages/$TAG/$REL_PATH"
+            mkdir -p "$(dirname $DEST)"
+            # Переписываем Filename URLs на Release asset URLs
+            RELEASE_BASE="https://github.com/darkworon/openwrt-mt6000-releases/releases/download/$TAG"
+            python3 -c "
+          import json, sys, os
+          data = json.load(open('$f'))
+          rel_dir = os.path.dirname('$REL_PATH')
+          if isinstance(data, list):
+              for pkg in data:
+                  if 'Filename' in pkg:
+                      fname = os.path.basename(pkg['Filename'])
+                      pkg['Filename'] = '$RELEASE_BASE/$rel_dir/' + fname
+          json.dump(data, open('$DEST','w'))
+          " 2>/dev/null || cp "$f" "$DEST"
+          done
+
+          # Ссылка latest → текущий тег
+          echo "$TAG" > "$PAGES_DIR/packages/latest.txt"
+
+          echo "Pages structure:"
+          find "$PAGES_DIR" -name "*.json" | head -10
+
+      - name: Collect APK files for Release assets
+        if: github.ref == 'refs/heads/main'
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          mkdir -p release-assets
+          cp output/firmware/*.bin release-assets/ 2>/dev/null || true
+          cp output/firmware/sha256sums release-assets/ 2>/dev/null || true
+          cp output/firmware/*.manifest release-assets/ 2>/dev/null || true
+          # Пакеты в тарболы по feed
+          cd output/packages
+          for feed_dir in */; do
+            feed="${feed_dir%/}"
+            tar czf "../../release-assets/packages-${feed}-${TAG}.tar.gz" "$feed_dir" 2>/dev/null || true
+          done
+          cd ../..
+          echo "=== Release assets ==="
+          ls -lh release-assets/
 
       - name: Generate release notes
         if: github.ref == 'refs/heads/main'
         id: notes
         run: |
           cd mt6000-overlay
-
-          # Upstream SHA
           OPENWRT_SHA=$(git -C ../openwrt rev-parse --short HEAD 2>/dev/null || echo "unknown")
-          PESA_SHA=$(git ls-remote https://github.com/pesa1234/openwrt refs/heads/next-r4.8.0.rss.mtk 2>/dev/null | cut -c1-7 || echo "unknown")
-
-          # Patch stats
+          PESA_BRANCH="${{ steps.tag.outputs.pesa_branch }}"
           KERNEL_COUNT=$(ls patches/kernel/*.patch 2>/dev/null | wc -l | tr -d ' ')
           MT76_COUNT=$(ls patches/mt76/*.patch 2>/dev/null | wc -l | tr -d ' ')
-
-          # What changed since last tag
+          RSS_COUNT=$(ls patches/kernel/999-27*.patch 2>/dev/null | wc -l | tr -d ' ')
+          WED_COUNT=$(ls patches/kernel/999-99*.patch 2>/dev/null | wc -l | tr -d ' ')
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$LAST_TAG" ]; then
             CHANGES=$(git log ${LAST_TAG}..HEAD --oneline -- patches/ config/ files/ 2>/dev/null | head -20)
           else
             CHANGES="Initial build"
           fi
+          APK_URL="https://darkworon.github.io/openwrt-mt6000-releases/packages/${{ steps.tag.outputs.tag }}/"
 
-          # Patch groups summary
-          RSS_COUNT=$(ls patches/kernel/999-27*.patch 2>/dev/null | wc -l | tr -d ' ')
-          WED_COUNT=$(ls patches/kernel/999-99*.patch 2>/dev/null | wc -l | tr -d ' ')
-          MT76_ATF=$(ls patches/mt76/200*.patch patches/mt76/251*.patch 2>/dev/null | wc -l | tr -d ' ')
+          NOTES="## OpenWrt MT6000 ${{ steps.tag.outputs.tag }}
 
-          NOTES="## Что включено в этой сборке
+          ### Патчи
+          - 🔀 **RSS**: ${RSS_COUNT} патчей — 4 Rx rings, +30-40% ethernet throughput
+          - 🛠️ **WED/fixes**: ${WED_COUNT} патчей — hardware WiFi offload, jumbo frames
+          - 📡 **mt76**: ${MT76_COUNT} патчей — ATF, iBF beamforming, VHT 256QAM 2.4GHz
+          - ⚙️ **advanced_setup**: IRQ affinity + RPS autotuning
 
-          ### Патчи pesa1234
-          - 🔀 **RSS** (Receive Side Scaling): ${RSS_COUNT} патчей — 4 Rx rings, +30-40% ethernet throughput
-          - 🛠️ **WED/misc fixes**: ${WED_COUNT} патчей — hardware WiFi offload, jumbo frames, NAPI tuning
-          - 📡 **mt76** (WiFi драйвер): ${MT76_COUNT} патчей — ATF, iBF beamforming, VHT 256QAM 2.4GHz
-          - ⚙️ **advanced_setup**: IRQ affinity + RPS autotuning для GL-MT6000
-
-          ### DAE (eBPF transparent proxy)
-          Включены kernel параметры: CGROUPS, KPROBES, BTF, BPF_STREAM_PARSER, NET_SCH_INGRESS
+          ### Feeds
+          - packages: darkworon/packages @ next-r4.mtk
+          - luci: darkworon/luci @ next-v4
 
           ### Upstream
           - openwrt/openwrt @ \`${OPENWRT_SHA}\`
-          - pesa1234 next-r4.8.0.rss.mtk @ \`${PESA_SHA}\`
+          - pesa1234 tracked: \`${PESA_BRANCH}\`
 
-          ### Изменения с прошлого релиза
+          ### APK repo для этой прошивки
           \`\`\`
-          ${CHANGES:-Нет изменений в patches/config/files}
+          ${APK_URL}
+          \`\`\`
+
+          ### Изменения
+          \`\`\`
+          ${CHANGES:-Нет изменений}
           \`\`\`
 
           ---
-          **Прошивать:** LuCI → System → Backup/Flash Firmware → Keep settings: по желанию"
+          **Установка:** LuCI → System → Backup/Flash Firmware  
+          **SHA256:** см. sha256sums в assets"
 
-          # Записать в файл (многострочный output)
           echo "NOTES<<EOF" >> $GITHUB_OUTPUT
           echo "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release
+      - name: Publish to openwrt-mt6000-releases
         if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: "OpenWrt MT6000 ${{ steps.tag.outputs.tag }}"
-          body: ${{ steps.notes.outputs.NOTES }}
-          files: output/*
-          fail_on_unmatched_files: false
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+
+          # Создаём Release в releases репо
+          gh release create "$TAG" \
+            --repo darkworon/openwrt-mt6000-releases \
+            --title "OpenWrt MT6000 $TAG" \
+            --notes "${{ steps.notes.outputs.NOTES }}" \
+            release-assets/*
+
+      - name: Update GitHub Pages (APK index)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+
+          # Клонируем gh-pages ветку releases репо
+          git clone --branch gh-pages --depth=1 \
+            https://x-access-token:${{ secrets.RELEASES_TOKEN }}@github.com/darkworon/openwrt-mt6000-releases.git \
+            gh-pages-repo
+
+          # Копируем новые индексы
+          cp -r gh-pages-update/packages/$TAG gh-pages-repo/packages/
+          echo "$TAG" > gh-pages-repo/packages/latest.txt
+
+          # Ротация: оставить последние 5 тегов в Pages
+          cd gh-pages-repo/packages
+          ls -d build-* 2>/dev/null | sort | head -n -5 | xargs rm -rf
+          cd ../..
+
+          # Пушим
+          cd gh-pages-repo
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git add -A
+          git commit -m "pages: add APK index for $TAG" || echo "nothing to commit"
+          git push
+
+      - name: Rotate old releases
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          # Оставить последние 5 релизов в releases репо
+          gh release list --repo darkworon/openwrt-mt6000-releases --limit 100 \
+            | tail -n +6 \
+            | awk '{print $3}' \
+            | xargs -I{} gh release delete {} \
+              --repo darkworon/openwrt-mt6000-releases \
+              --yes --cleanup-tag 2>/dev/null || true
+
+      - name: Notify Telegram
+        if: github.ref == 'refs/heads/main' && always()
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          STATUS="${{ job.status }}"
+          ICON="✅"
+          [ "$STATUS" != "success" ] && ICON="❌"
+          RELEASE_URL="https://github.com/darkworon/openwrt-mt6000-releases/releases/tag/$TAG"
+          MSG="${ICON} OpenWrt MT6000 | ${TAG} | ${STATUS}"
+          [ "$STATUS" = "success" ] && MSG="$MSG
+          📦 $RELEASE_URL"
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
+            -d chat_id=84668999 \
+            -d text="$MSG" > /dev/null
