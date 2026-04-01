@@ -2,7 +2,8 @@ name: Track pesa1234 patch updates
 
 on:
   schedule:
-    - cron: '0 4 * * 5'  # пятница 04:00 UTC (после sync-forks, до сборки)
+    - cron: '0 4 * * 0'  # воскресенье 04:00 UTC
+    - cron: '0 4 * * 3'  # среда 04:00 UTC
   workflow_dispatch:
 
 jobs:
