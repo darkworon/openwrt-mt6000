@@ -11,6 +11,9 @@ on:
     - cron: '0 5 * * 5'  # каждую пятницу в 05:00 UTC (готово к субботе)
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-22.04
