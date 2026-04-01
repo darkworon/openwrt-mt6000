@@ -152,10 +152,10 @@ jobs:
       - name: Build firmware image
         run: |
           cd openwrt
-          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
-            target/install 2>&1 | tee /tmp/install.log
-          echo "=== Last 30 lines of install log ==="
-          tail -30 /tmp/install.log
+          make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 \
+            target/install 2>&1 | tee /tmp/install.log || true
+          echo "=== Last 80 lines of install log ==="
+          tail -80 /tmp/install.log
           echo "=== Files in bin/targets ==="
           find bin/targets -type f | sort
 
