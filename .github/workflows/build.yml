@@ -104,14 +104,14 @@ jobs:
         run: |
           cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
           # Используем наши форки feeds вместо upstream
-          cat > openwrt/feeds.conf.default << 'FEEDSEOF'
-src-git packages https://github.com/darkworon/packages.git;next-r4.mtk
-          src-git luci https://github.com/darkworon/luci.git;next-v4
-          src-git routing https://git.openwrt.org/feed/routing.git
-          src-git telephony https://git.openwrt.org/feed/telephony.git
-          src-git imrtpkg https://github.com/darkworon/openwrt-mt6000-immortalwrt-packages.git;master
-          src-git dae https://github.com/darkworon/openwrt-mt6000-luci-app-dae.git;main
-          FEEDSEOF
+          printf '%s\n' \
+            'src-git packages https://github.com/darkworon/packages.git;next-r4.mtk' \
+            'src-git luci https://github.com/darkworon/luci.git;next-v4' \
+            'src-git routing https://git.openwrt.org/feed/routing.git' \
+            'src-git telephony https://git.openwrt.org/feed/telephony.git' \
+            'src-git imrtpkg https://github.com/darkworon/openwrt-mt6000-immortalwrt-packages.git;master' \
+            'src-git dae https://github.com/darkworon/openwrt-mt6000-luci-app-dae.git;main' \
+            > openwrt/feeds.conf.default
 
       - name: Update feeds
         run: |
