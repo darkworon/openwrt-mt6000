@@ -8,7 +8,8 @@ on:
       - 'config/**'
       - 'files/**'
   schedule:
-    - cron: '0 5 * * 5'  # каждую пятницу в 05:00 UTC (готово к субботе)
+    - cron: '0 5 * * 2'  # вторник 05:00 UTC
+    - cron: '0 5 * * 5'  # пятница 05:00 UTC
   workflow_dispatch:
 
 permissions:
