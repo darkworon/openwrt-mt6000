@@ -217,9 +217,9 @@ jobs:
         if: github.ref == 'refs/heads/main'
         id: tag
         run: |
-          OPENWRT_REV=$(git -C openwrt describe --always --tags 2>/dev/null || git -C openwrt rev-parse --short HEAD)
+          OPENWRT_REV=$(git -C openwrt rev-parse --short HEAD)
           PESA_BRANCH=$(cat mt6000-overlay/.pesa1234-branch 2>/dev/null || echo "unknown")
-          TAG="build-$(date -u +%Y.%m.%d)-${OPENWRT_REV}"
+          TAG="build-$(date -u +%Y.%m.%d-%H%M)-${OPENWRT_REV}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "pesa_branch=$PESA_BRANCH" >> $GITHUB_OUTPUT
           echo "Release tag: $TAG"
@@ -336,11 +336,12 @@ jobs:
           TAG="${{ steps.tag.outputs.tag }}"
 
           # Создаём Release в releases репо
+          echo "${{ steps.notes.outputs.NOTES }}" > /tmp/release_notes.md
           gh release create "$TAG" \
             --repo darkworon/openwrt-mt6000-releases \
             --title "OpenWrt MT6000 $TAG" \
-            --notes "${{ steps.notes.outputs.NOTES }}" \
-            release-assets/*
+            --notes-file /tmp/release_notes.md \
+            release-assets/* || echo "Release may already exist, continuing"
 
       - name: Update GitHub Pages (APK index)
         if: github.ref == 'refs/heads/main'
