@@ -173,7 +173,8 @@ jobs:
           mkdir -p output/firmware output/packages
 
           # Прошивка
-          find openwrt/bin/targets -name "*.bin" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
+          find openwrt/bin/targets -name "*sysupgrade*.bin" -o -name "sha256sums" -o -name "*.manifest" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
+          find openwrt/bin/targets -name "*initramfs*.bin" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
           find openwrt/bin/targets -name "sha256sums" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
           find openwrt/bin/targets -name "*.manifest" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
 
@@ -186,9 +187,11 @@ jobs:
 
           # Smoke test
           echo "=== Smoke test ==="
-          FIRMWARE=$(ls output/firmware/*.bin 2>/dev/null | head -1)
+          FIRMWARE=$(ls output/firmware/*sysupgrade*.bin 2>/dev/null | head -1)
           if [ -z "$FIRMWARE" ]; then
-            echo "FAIL: no firmware .bin found"
+            echo "Available files:"
+            ls -lh output/firmware/ || true
+            echo "FAIL: no sysupgrade firmware found"
             exit 1
           fi
           SIZE=$(stat -c%s "$FIRMWARE")
@@ -196,7 +199,7 @@ jobs:
             echo "FAIL: firmware too small ($SIZE bytes)"
             exit 1
           fi
-          echo "OK: firmware $FIRMWARE ($SIZE bytes)"
+          echo "OK: firmware $(basename $FIRMWARE) ($(du -sh $FIRMWARE | cut -f1))"
 
           # Проверяем manifest на ключевые пакеты
           MANIFEST=$(ls output/firmware/*.manifest 2>/dev/null | head -1)
