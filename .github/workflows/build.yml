@@ -149,6 +149,12 @@ jobs:
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
             tools/install toolchain/install 2>&1 | grep -E "^(make\[|ERROR|WARNING)" | tail -20
 
+      - name: Build mt76 verbose (debug)
+        run: |
+          cd openwrt
+          echo "=== Building mt76 with -j1 V=s ==="
+          make -j1 V=s package/kernel/mt76/{clean,compile} 2>&1 | grep -E "^(make|Error|error:|patching|Hunk|FAIL|patch:|can.t)" | tail -80 || true
+
       - name: Build target + packages
         run: |
           cd openwrt
