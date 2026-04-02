@@ -152,18 +152,9 @@ jobs:
       - name: Build target + packages
         run: |
           cd openwrt
-          # Step 1: compile kernel first
-          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 target/compile 2>&1 | tail -20
-          # Step 2: compile mt76 with verbose to see errors
-          echo "=== Building mt76 verbose ==="
-          make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/kernel/mt76/compile 2>&1 | grep -E "error:|Error|Hunk|reject|patch|failed" | tail -50 || true
-          # Step 3: rest of packages
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
-            package/compile package/install package/index 2>&1 | tee /tmp/build.log
-          echo "=== Last 50 lines ==="
-          tail -50 /tmp/build.log
-          echo "=== root-mediatek ==="
-          ls build_dir/target-aarch64_cortex-a53_musl/root-mediatek/ | head -5 || echo "MISSING!"
+            target/compile package/compile package/install package/index 2>&1 | tee /tmp/build.log
+          tail -20 /tmp/build.log
 
       - name: Build firmware image
         run: |
