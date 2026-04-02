@@ -149,21 +149,21 @@ jobs:
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
             tools/install toolchain/install 2>&1 | grep -E "^(make\[|ERROR|WARNING)" | tail -20
 
-      - name: Build mt76 verbose (debug)
-        run: |
-          cd openwrt
-          echo "=== Building mt76 with -j1 V=s ==="
-          make -j1 V=s package/kernel/mt76/{clean,compile} 2>&1 | grep -E "^(make|Error|error:|patching|Hunk|FAIL|patch:|can.t)" | tail -80 || true
-
       - name: Build target + packages
         run: |
           cd openwrt
+          # Step 1: compile kernel first
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 target/compile 2>&1 | tail -20
+          # Step 2: compile mt76 with verbose to see errors
+          echo "=== Building mt76 verbose ==="
+          make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/kernel/mt76/compile 2>&1 | grep -E "error:|Error|Hunk|reject|patch|failed" | tail -50 || true
+          # Step 3: rest of packages
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
-            target/compile package/compile package/install package/index 2>&1 | tee /tmp/build.log
-          echo "=== Last 50 lines of build log ==="
+            package/compile package/install package/index 2>&1 | tee /tmp/build.log
+          echo "=== Last 50 lines ==="
           tail -50 /tmp/build.log
-          echo "=== root-mediatek check ==="
-          ls build_dir/target-aarch64_cortex-a53_musl/root-mediatek/ | head -5 || echo "root-mediatek missing!"
+          echo "=== root-mediatek ==="
+          ls build_dir/target-aarch64_cortex-a53_musl/root-mediatek/ | head -5 || echo "MISSING!"
 
       - name: Build firmware image
         run: |
