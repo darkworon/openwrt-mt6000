@@ -1,0 +1,97 @@
+name: Validate patches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'patches/**'
+      - 'files/package/kernel/mt76/**'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: mt6000-overlay
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            build-essential clang flex bison g++ gawk gcc-multilib \
+            g++-multilib gettext git libncurses-dev libssl-dev \
+            python3-setuptools rsync swig unzip zlib1g-dev \
+            file wget curl libelf-dev dwarves
+
+      - name: Cache toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/hostpkg
+            openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
+          key: validate-toolchain-${{ hashFiles('mt6000-overlay/config/mt6000.diffconfig') }}
+          restore-keys: validate-toolchain-
+
+      - name: Clone OpenWrt
+        run: |
+          git clone --depth=1 --branch main https://github.com/openwrt/openwrt.git openwrt
+          echo "OpenWrt SHA: $(git -C openwrt rev-parse --short HEAD)"
+
+      - name: Apply mt76 overlay (Makefile pin)
+        run: |
+          mkdir -p openwrt/package/kernel/mt76
+          if [ -f mt6000-overlay/files/package/kernel/mt76/Makefile ]; then
+            cp mt6000-overlay/files/package/kernel/mt76/Makefile openwrt/package/kernel/mt76/Makefile
+            echo "mt76 Makefile overridden: $(grep PKG_SOURCE_DATE openwrt/package/kernel/mt76/Makefile)"
+          fi
+
+      - name: Apply mt76 patches
+        run: |
+          PATCHES_DIR="mt6000-overlay/patches/mt76"
+          TARGET_DIR="openwrt/package/kernel/mt76/patches"
+          mkdir -p "$TARGET_DIR"
+          cp -v "$PATCHES_DIR"/*.patch "$TARGET_DIR/" 2>/dev/null || true
+          echo "mt76 patches: $(ls $TARGET_DIR/*.patch 2>/dev/null | wc -l)"
+
+      - name: Copy diffconfig
+        run: |
+          cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
+
+      - name: Update feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a -q
+          ./scripts/feeds install -a -q
+
+      - name: Build toolchain (cached)
+        run: |
+          cd openwrt
+          make defconfig
+          make -j$(nproc) tools/install toolchain/install 2>&1 | grep -E "^(make\[1\]|ERROR)" | tail -10
+
+      - name: Compile kernel
+        run: |
+          cd openwrt
+          make -j$(nproc) target/compile 2>&1 | grep -E "^(make\[1\]|ERROR)" | tail -10
+
+      - name: Compile mt76 (validation target)
+        run: |
+          cd openwrt
+          echo "=== Compiling mt76 ==="
+          make -j1 V=s package/kernel/mt76/compile 2>&1 | \
+            grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build" | \
+            grep -v "^#\|//\| \* " | tail -30
+          echo "=== mt76 compile result: $? ==="
+
+      - name: Notify Telegram on failure
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TG_BOT_TOKEN }}/sendMessage" \
+            -d chat_id=84668999 \
+            -d text="❌ Patch validation FAILED | ${{ github.sha }} | Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
