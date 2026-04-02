@@ -65,9 +65,17 @@ jobs:
           CHANGED_PATCHES=""
           REMOVED_PATCHES=""
 
+          # Load excluded patches list
+          EXCLUDED=$(cat mt6000-overlay/patches/mt76/EXCLUDED.md 2>/dev/null | grep '^\| \`' | grep -o '\`[^`]*\.patch\`' | tr -d '`' || true)
+
           for f in $PESA_KERNEL/999-*.patch; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
+            # Skip intentionally excluded patches
+            if echo "$EXCLUDED" | grep -q "^$name$"; then
+              echo "Skipping excluded: $name"
+              continue
+            fi
             if [ ! -f "$OUR_KERNEL/$name" ]; then
               NEW_PATCHES="$NEW_PATCHES\n- ➕ NEW: \`$name\`"
             elif ! diff -q "$f" "$OUR_KERNEL/$name" > /dev/null 2>&1; then
@@ -106,9 +114,17 @@ jobs:
           CHANGED_PATCHES=""
           REMOVED_PATCHES=""
 
+          # Load excluded patches list
+          EXCLUDED=$(cat mt6000-overlay/patches/mt76/EXCLUDED.md 2>/dev/null | grep '^\| \`' | grep -o '\`[^`]*\.patch\`' | tr -d '`' || true)
+
           for f in $PESA_MT76/*.patch; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
+            # Skip intentionally excluded patches
+            if echo "$EXCLUDED" | grep -q "^$name$"; then
+              echo "Skipping excluded: $name"
+              continue
+            fi
             if [ ! -f "$OUR_MT76/$name" ]; then
               NEW_PATCHES="$NEW_PATCHES\n- ➕ NEW: \`$name\`"
             elif ! diff -q "$f" "$OUR_MT76/$name" > /dev/null 2>&1; then
