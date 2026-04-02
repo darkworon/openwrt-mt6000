@@ -152,9 +152,11 @@ jobs:
       - name: Build target + packages
         run: |
           cd openwrt
-          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
-            target/compile package/compile package/install package/index 2>&1 | tee /tmp/build.log
-          tail -20 /tmp/build.log
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 target/compile 2>&1 | tail -5
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/compile 2>&1 | tail -10
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/install 2>&1 | tail -10
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/index 2>&1 | tail -5
+          echo "=== root-mediatek ===" && ls build_dir/target-aarch64_cortex-a53_musl/root-mediatek/ | wc -l || echo "MISSING"
 
       - name: Build firmware image
         run: |
