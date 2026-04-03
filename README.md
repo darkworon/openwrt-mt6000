@@ -83,7 +83,8 @@ CONFIG_NET_CLS_BPF=m, CONFIG_NET_CLS_ACT=y, CONFIG_BPF_EVENTS=y
 
 | Workflow | Триггер | Что делает |
 |----------|---------|------------|
-| `track-pesa1234.yml` | Вс + Ср 04:00 UTC, ручной | Проверяет обновления у pesa1234, создаёт Issue |
+| `validate.yml` | Push в patches/ | Быстрая валидация патчей (~20-40 мин), уведомление в Telegram при ошибке |
+| `track-pesa1234.yml` | Вс + Ср 04:00 UTC, ручной | Проверяет обновления у pesa1234, создаёт Issue (пропускает EXCLUDED.md) |
 | `build.yml` | Пт 05:00 UTC, push в patches/config/files, ручной | Полная сборка и публикация |
 
 ### Как работает сборка (build.yml)
@@ -229,4 +230,4 @@ gh workflow run build.yml --repo darkworon/openwrt-mt6000
 | [darkworon/openwrt-mt6000-luci-app-dae](https://github.com/darkworon/openwrt-mt6000-luci-app-dae) | Форк sbwml/luci-app-dae — LuCI интерфейс для dae |
 | [darkworon/openwrt-mt6000-releases](https://github.com/darkworon/openwrt-mt6000-releases) | Прошивки и APK repo |
 
-*Последнее обновление: 2026-04-01*
+*Последнее обновление: 2026-04-03*
