@@ -60,6 +60,7 @@ jobs:
 
       - name: Clone official OpenWrt (upstream)
         run: |
+          rm -rf openwrt
           git clone --depth=1 --branch main \
             https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
