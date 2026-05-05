@@ -1,0 +1,16 @@
+#!/bin/sh
+
+STATE_FILE="/var/state/zerotier-ntp-restarted"
+
+[ "$ACTION" = "stratum" ] || exit 0
+
+# Restart ZeroTier once after first NTP sync per boot. GL-MT6000 has no RTC, so
+# ZeroTier may start with an invalid clock and fail TLS/control-plane setup.
+# Repeating this on every NTP stratum event flaps zt0 and reloads firewall,
+# which disrupts dae-routed client traffic.
+[ -f "$STATE_FILE" ] && exit 0
+
+mkdir -p "$(dirname "$STATE_FILE")"
+echo "ntp-synced" > "$STATE_FILE"
+logger -t zerotier "NTP synced, restarting ZeroTier once after boot"
+/etc/init.d/zerotier restart

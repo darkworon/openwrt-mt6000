@@ -62,6 +62,11 @@ GitHub Pages работает только на публичных репо (Fre
 - ATF/HW-ATF (Airtime Fairness)
 - USB speed/power control
 
+**`etc/hotplug.d/ntp/25-zerotier`** — hotfix для роутера без RTC:
+- после первого валидного NTP sync за boot один раз перезапускает ZeroTier;
+- повторные NTP `stratum` events игнорирует через `/var/state/zerotier-ntp-restarted`;
+- предотвращает постоянный flap `zt0` и firewall reload, которые роняют dae-routed client traffic.
+
 ### Конфиг (`config/`)
 
 **`mt6000.diffconfig`:**
