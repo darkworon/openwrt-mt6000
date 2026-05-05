@@ -161,7 +161,26 @@ jobs:
 
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/compile > /tmp/package-compile.log 2>&1
           status=$?
-          tail -20 /tmp/package-compile.log
+          if [ "$status" -ne 0 ]; then
+            echo "=== package/compile failed: last 120 lines ==="
+            tail -120 /tmp/package-compile.log
+            echo "=== package/compile filtered errors ==="
+            grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:" /tmp/package-compile.log | \
+              grep -v "^#\|//\| \* " | tail -120 || true
+
+            if grep -q "package/kernel/mt76 failed to build" /tmp/package-compile.log; then
+              echo "=== mt76 verbose rebuild for diagnostics ==="
+              make -j1 V=s package/kernel/mt76/clean > /tmp/mt76-clean.log 2>&1
+              make -j1 V=s package/kernel/mt76/compile 2>&1 | tee /tmp/mt76-debug.log
+              mt76_status=${PIPESTATUS[0]}
+              echo "=== mt76 filtered errors ==="
+              grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:" /tmp/mt76-debug.log | \
+                grep -v "^#\|//\| \* " | tail -120 || true
+              echo "=== mt76 verbose result: $mt76_status ==="
+            fi
+          else
+            tail -20 /tmp/package-compile.log
+          fi
           [ "$status" -eq 0 ] || exit $status
 
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/install > /tmp/package-install.log 2>&1
