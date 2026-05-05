@@ -69,9 +69,13 @@ jobs:
       - name: Apply kernel patches (pesa1234 series)
         run: |
           PATCHES_DIR="mt6000-overlay/patches/kernel"
-          TARGET_DIR="openwrt/target/linux/mediatek/patches-6.12"
+          TARGET_DIR="$(ls -d openwrt/target/linux/mediatek/patches-* 2>/dev/null | sort -V | tail -n1)"
+          if [ -z "$TARGET_DIR" ]; then
+            echo "No mediatek kernel patches directory found"
+            exit 1
+          fi
           if [ -d "$PATCHES_DIR" ] && [ "$(ls -A $PATCHES_DIR)" ]; then
-            echo "Applying kernel patches..."
+            echo "Applying kernel patches to $TARGET_DIR..."
             cp -v "$PATCHES_DIR"/*.patch "$TARGET_DIR/" 2>/dev/null || true
             echo "Kernel patches applied: $(ls $PATCHES_DIR/*.patch 2>/dev/null | wc -l)"
           else
@@ -80,16 +84,13 @@ jobs:
 
       - name: Apply mt76 patches
         run: |
-          PATCHES_DIR="mt6000-overlay/patches/mt76"
           TARGET_DIR="openwrt/package/kernel/mt76/patches"
-          if [ -d "$PATCHES_DIR" ] && [ "$(ls -A $PATCHES_DIR)" ]; then
-            echo "Applying mt76 patches..."
-            mkdir -p "$TARGET_DIR"
+          mkdir -p "$TARGET_DIR"
+          for PATCHES_DIR in mt6000-overlay/patches/mt76 mt6000-overlay/patches/mt76-local; do
+            [ -d "$PATCHES_DIR" ] || continue
             cp -v "$PATCHES_DIR"/*.patch "$TARGET_DIR/" 2>/dev/null || true
-            echo "mt76 patches applied: $(ls $PATCHES_DIR/*.patch 2>/dev/null | wc -l)"
-          else
-            echo "No mt76 patches found — skipping"
-          fi
+          done
+          echo "mt76 patches applied: $(ls $TARGET_DIR/*.patch 2>/dev/null | wc -l)"
 
       - name: Apply overlay files (advanced_setup etc.)
         run: |
@@ -105,7 +106,7 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/darkworon/openwrt-mt6000-immortalwrt-packages.git /tmp/imrtpkg
           git clone --depth=1 https://github.com/darkworon/openwrt-mt6000-luci-app-dae.git /tmp/luci-app-dae
-          mkdir -p openwrt/package/feeds/dae
+          mkdir -p openwrt/package/feeds/dae openwrt/package/feeds/luci-app-dae
           cp -r /tmp/imrtpkg/net/dae openwrt/package/feeds/dae/
           cp -r /tmp/luci-app-dae/. openwrt/package/feeds/luci-app-dae/
           echo "dae packages copied"
@@ -114,13 +115,7 @@ jobs:
       - name: Copy diffconfig and feeds
         run: |
           cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
-          # Используем наши форки feeds вместо upstream
-          printf '%s\n' \
-            'src-git packages https://github.com/darkworon/packages.git;next-r4.mtk' \
-            'src-git luci https://github.com/darkworon/luci.git;next-v4' \
-            'src-git routing https://git.openwrt.org/feed/routing.git' \
-            'src-git telephony https://git.openwrt.org/feed/telephony.git' \
-            > openwrt/feeds.conf.default
+          cp mt6000-overlay/config/feeds.conf.default openwrt/feeds.conf.default
 
       - name: Update feeds
         run: |
@@ -147,27 +142,52 @@ jobs:
       - name: Build tools & toolchain
         run: |
           cd openwrt
+          set +e
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 \
-            tools/install toolchain/install 2>&1 | grep -E "^(make\[|ERROR|WARNING)" | tail -20
+            tools/install toolchain/install > /tmp/toolchain.log 2>&1
+          status=$?
+          grep -E "^(make\[|ERROR|WARNING)" /tmp/toolchain.log | tail -20 || true
+          exit $status
 
       - name: Build target + packages
         run: |
           cd openwrt
-          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 target/compile 2>&1 | tail -5
-          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/compile 2>&1 | tail -10
-          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/install 2>&1 | tail -10
-          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/index 2>&1 | tail -5
+          set +e
+
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 target/compile > /tmp/target-compile.log 2>&1
+          status=$?
+          tail -20 /tmp/target-compile.log
+          [ "$status" -eq 0 ] || exit $status
+
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/compile > /tmp/package-compile.log 2>&1
+          status=$?
+          tail -20 /tmp/package-compile.log
+          [ "$status" -eq 0 ] || exit $status
+
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/install > /tmp/package-install.log 2>&1
+          status=$?
+          tail -20 /tmp/package-install.log
+          [ "$status" -eq 0 ] || exit $status
+
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/index > /tmp/package-index.log 2>&1
+          status=$?
+          tail -20 /tmp/package-index.log
+          [ "$status" -eq 0 ] || exit $status
+
           echo "=== root-mediatek ===" && ls build_dir/target-aarch64_cortex-a53_musl/root-mediatek/ | wc -l || echo "MISSING"
 
       - name: Build firmware image
         run: |
           cd openwrt
+          set +e
           make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 \
-            target/install 2>&1 | tee /tmp/install.log || true
+            target/install 2>&1 | tee /tmp/install.log
+          status=${PIPESTATUS[0]}
           echo "=== Last 80 lines of install log ==="
           tail -80 /tmp/install.log
           echo "=== Files in bin/targets ==="
           find bin/targets -type f | sort
+          exit $status
 
       - name: Collect artifacts and smoke test
         run: |
@@ -284,7 +304,7 @@ jobs:
           OPENWRT_SHA=$(git -C ../openwrt rev-parse --short HEAD 2>/dev/null || echo "unknown")
           PESA_BRANCH="${{ steps.tag.outputs.pesa_branch }}"
           KERNEL_COUNT=$(ls patches/kernel/*.patch 2>/dev/null | wc -l | tr -d ' ')
-          MT76_COUNT=$(ls patches/mt76/*.patch 2>/dev/null | wc -l | tr -d ' ')
+          MT76_COUNT=$(find patches/mt76 patches/mt76-local -maxdepth 1 -name "*.patch" 2>/dev/null | wc -l | tr -d ' ')
           RSS_COUNT=$(ls patches/kernel/999-27*.patch 2>/dev/null | wc -l | tr -d ' ')
           WED_COUNT=$(ls patches/kernel/999-99*.patch 2>/dev/null | wc -l | tr -d ' ')
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
@@ -306,6 +326,7 @@ jobs:
           ### Feeds
           - packages: darkworon/packages @ next-r4.mtk
           - luci: darkworon/luci @ next-v4
+          - video: openwrt/video @ main
 
           ### Upstream
           - openwrt/openwrt @ \`${OPENWRT_SHA}\`

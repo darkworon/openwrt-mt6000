@@ -1,6 +1,7 @@
 # mt76 patches (pesa1234 series)
 
 Patches applied to `package/kernel/mt76/patches/` during build.
+Additional local compatibility patches live in `patches/mt76-local/` and are copied into the same OpenWrt patch directory.
 
 ## Source
 
@@ -34,6 +35,11 @@ Fork of pesa1234/openwrt. mt76 patches live in `package/kernel/mt76/patches/`.
 ## How to add patches
 
 ```bash
-git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/pesa1234/openwrt.git
-cp pesa1234/openwrt/package/kernel/mt76/patches/*.patch patches/mt76/
+git clone --depth=1 --branch next-r4.8.2.rss.mtk https://github.com/pesa1234/openwrt.git /tmp/pesa1234
+rm -f patches/mt76/*.patch
+for f in /tmp/pesa1234/package/kernel/mt76/patches/*.patch; do
+  name=$(basename "$f")
+  grep -Fq "$name" patches/mt76/EXCLUDED.md && continue
+  cp "$f" patches/mt76/
+done
 ```

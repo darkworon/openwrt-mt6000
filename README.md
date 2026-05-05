@@ -36,16 +36,16 @@ GitHub Pages работает только на публичных репо (Fre
 
 ### Патчи ядра (`patches/kernel/` — серия 999-*)
 
-Кастомные патчи pesa1234 поверх официального OpenWrt kernel 6.12:
+Кастомные патчи pesa1234 поверх официального OpenWrt kernel 6.18:
 
 | Группа | Патчи | Эффект |
 |--------|-------|--------|
-| RSS (Receive Side Scaling) | 999-2700..2728 | +30-40% ethernet throughput, 4 Rx rings |
-| WED bugfixes | 999-9911..9914 | Hardware WiFi offload стабильность |
+| RSS (Receive Side Scaling) | 999-2701..2728, 999-9901..9910 | +30-40% ethernet throughput, 4 Rx rings |
+| WED bugfixes | 999-9911..9915 | Hardware WiFi offload стабильность |
 | NAPI/misc | 999-9907..9910 | Jumbo frames, NAPI poll weight, buffer tuning |
 | USB | 999-9999 | USB power control |
 
-### Патчи WiFi (`patches/mt76/` — ~93 патча)
+### Патчи WiFi (`patches/mt76/` — 93 upstream-патча + 1 local compat)
 
 - **WED TX support** — hardware WiFi offload
 - **HW-ATF** — Airtime Fairness через железо
@@ -96,8 +96,8 @@ CONFIG_NET_CLS_BPF=m, CONFIG_NET_CLS_ACT=y, CONFIG_BPF_EVENTS=y
 
 ```
 1. Клонировать openwrt/openwrt:main (официальный upstream)
-2. Скопировать patches/kernel/*.patch → target/linux/mediatek/patches-6.12/
-3. Скопировать patches/mt76/*.patch → package/kernel/mt76/patches/
+2. Скопировать patches/kernel/*.patch → актуальный target/linux/mediatek/patches-*/
+3. Скопировать patches/mt76/*.patch и patches/mt76-local/*.patch → package/kernel/mt76/patches/
 4. Скопировать files/ → openwrt/ (advanced_setup и др.)
 5. feeds.conf → darkworon/packages:next-r4.mtk + darkworon/luci:next-v4
 6. make defconfig + проверка DAE параметров
@@ -114,9 +114,9 @@ CONFIG_NET_CLS_BPF=m, CONFIG_NET_CLS_ACT=y, CONFIG_BPF_EVENTS=y
 ```
 1. Найти последнюю ветку next-r4.*.rss.mtk у pesa1234 (динамически)
 2. Сравнить с .pesa1234-branch (что мы отслеживаем сейчас)
-3. Клонировать pesa1234/openwrt (актуальная ветка) и pesa1234/mt76
+3. Клонировать pesa1234/openwrt (актуальная ветка)
 4. Сравнить patches/kernel/ с pesa1234 999-* патчами
-5. Сравнить patches/mt76/ с pesa1234/mt76/patches/
+5. Сравнить patches/mt76/ с pesa1234/openwrt package/kernel/mt76/patches/
 6. Сравнить feeds.conf.default
 7. Если есть delta → создать GitHub Issue с описанием и командами для обновления
 ```
@@ -157,13 +157,20 @@ BRANCH=$(gh api "repos/pesa1234/openwrt/branches?per_page=100" \
 
 # 2. Клонировать
 git clone --depth=1 --branch $BRANCH https://github.com/pesa1234/openwrt.git /tmp/pesa1234
-git clone --depth=1 https://github.com/pesa1234/mt76.git /tmp/pesa1234-mt76
 
 # 3. Обновить патчи
-cp /tmp/pesa1234/target/linux/mediatek/patches-6.12/999-*.patch patches/kernel/
-cp /tmp/pesa1234-mt76/patches/*.patch patches/mt76/
+KERNEL_DIR=$(ls -d /tmp/pesa1234/target/linux/mediatek/patches-* | sort -V | tail -n1)
+rm -f patches/kernel/*.patch patches/mt76/*.patch
+cp "$KERNEL_DIR"/999-*.patch patches/kernel/
+for f in /tmp/pesa1234/package/kernel/mt76/patches/*.patch; do
+  name=$(basename "$f")
+  grep -Fq "$name" patches/mt76/EXCLUDED.md && continue
+  cp "$f" patches/mt76/
+done
 cp /tmp/pesa1234/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup \
    files/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup
+cp /tmp/pesa1234/package/kernel/mt76/Makefile \
+   files/package/kernel/mt76/Makefile
 
 # 4. Обновить tracked branch
 echo "$BRANCH" > .pesa1234-branch
@@ -218,7 +225,7 @@ gh workflow run build.yml --repo darkworon/openwrt-mt6000
 |----|----------|-----------|
 | TD-001 | Выделить отдельного Telegram бота для build уведомлений (сейчас @jarvis_vetva_bot) | Low |
 | TD-002 | Зашить `CONFIG_VERSION_REPO` в `mt6000.diffconfig` (сейчас APK URL только в release notes) | Medium |
-| TD-003 | Настроить sync-workflow для darkworon/packages и darkworon/luci из pesa1234 (сейчас ручное обновление) | Medium |
+| TD-003 | Автоматизировать смену ветки `darkworon/openwrt` в sync-forks.yml при появлении новой `next-r*.rss.mtk` | Medium |
 
 ---
 

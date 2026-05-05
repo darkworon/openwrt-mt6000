@@ -1,19 +1,17 @@
 # Kernel patches (pesa1234 series)
 
-Patches applied to `target/linux/mediatek/patches-6.12/` during build.
+Patches applied to the active `target/linux/mediatek/patches-*` directory during build.
 
 ## Source
 
-Fork of pesa1234/openwrt, branch `next-r4.8.0.rss.mtk`.
+Fork of pesa1234/openwrt, branch `next-r4.8.2.rss.mtk`.
 
 ## Patch series
 
 ### RSS (Receive Side Scaling) — 999-27xx
-- `999-2700` — DTS mt7986: RSS IRQ vectors in ethernet node
 - `999-2701` — DTS mt7981: RSS IRQ vectors
 - `999-2710` — mtk_eth_soc: RSS + LRO registers
 - `999-2711` — mtk_eth_soc: full RSS implementation
-- `999-2716` — mtk_eth_soc: cap_bit → u64
 - `999-2719` — NAPI poll weight → 256 (peak throughput)
 - `999-2725` — default rx buffer length increase
 - `999-2728` — 2500Mbps rate limit support
@@ -32,6 +30,7 @@ Fork of pesa1234/openwrt, branch `next-r4.8.0.rss.mtk`.
 - `999-9912` — WED: WED1 rx hang after SER
 - `999-9913` — WED: ring cleanup on module reinsertion
 - `999-9914` — WED: avoid double WDMA init
+- `999-9915` — improve non-DSA Tx queue selection
 
 ### Misc
 - `999-9999` — USB power control
@@ -40,8 +39,9 @@ Fork of pesa1234/openwrt, branch `next-r4.8.0.rss.mtk`.
 
 1. Extract patch from pesa1234/openwrt:
    ```bash
-   git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/pesa1234/openwrt.git
-   cp pesa1234/openwrt/target/linux/mediatek/patches-6.12/999-*.patch patches/kernel/
+   git clone --depth=1 --branch next-r4.8.2.rss.mtk https://github.com/pesa1234/openwrt.git /tmp/pesa1234
+   KERNEL_DIR=$(ls -d /tmp/pesa1234/target/linux/mediatek/patches-* | sort -V | tail -n1)
+   cp "$KERNEL_DIR"/999-*.patch patches/kernel/
    ```
 
 2. Commit to this repo — CI will pick them up automatically.

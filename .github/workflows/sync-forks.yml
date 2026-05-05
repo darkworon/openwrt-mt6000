@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         repo:
-          - { fork: 'darkworon/openwrt', upstream: 'pesa1234/openwrt', branch: 'next-r4.8.0.rss.mtk' }
+          - { fork: 'darkworon/openwrt', upstream: 'pesa1234/openwrt', branch: 'next-r4.8.2.rss.mtk' }
           - { fork: 'darkworon/mt76', upstream: 'pesa1234/mt76', branch: 'main' }
           - { fork: 'darkworon/packages', upstream: 'pesa1234/packages', branch: 'next-r4.mtk' }
           - { fork: 'darkworon/luci', upstream: 'pesa1234/luci', branch: 'next-v4' }

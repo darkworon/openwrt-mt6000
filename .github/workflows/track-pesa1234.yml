@@ -21,11 +21,18 @@ jobs:
 
       - name: Find latest pesa1234 branch
         id: pesa_branch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # Получаем список веток, находим последнюю next-r4.*.rss.mtk по имени (semver sort)
-          LATEST=$(gh api "repos/pesa1234/openwrt/branches?per_page=100" \
-            --jq '[.[].name | select(test("^next-r[0-9]+\\.[0-9]+\\.[0-9]+\\.rss\\.mtk$"))] | sort | last' \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}")
+          # Получаем список веток, находим последнюю next-r4.*.rss.mtk по version-sort.
+          LATEST=$(gh api --paginate "repos/pesa1234/openwrt/branches?per_page=100" \
+            --jq '.[].name' \
+            | grep -E '^next-r[0-9]+\.[0-9]+\.[0-9]+\.rss\.mtk$' | \
+            sort -V | tail -n1)
+          if [ -z "$LATEST" ]; then
+            echo "No next-r*.rss.mtk branch found"
+            exit 1
+          fi
           echo "Latest pesa1234 branch: $LATEST"
           echo "branch=$LATEST" >> $GITHUB_OUTPUT
 
@@ -35,10 +42,6 @@ jobs:
             https://github.com/pesa1234/openwrt.git /tmp/pesa1234
           echo "Cloned branch: ${{ steps.pesa_branch.outputs.branch }}"
           echo "SHA: $(git -C /tmp/pesa1234 rev-parse HEAD)"
-
-      - name: Clone pesa1234/mt76
-        run: |
-          git clone --depth=1 https://github.com/pesa1234/mt76.git /tmp/pesa1234-mt76
 
       - name: Check if branch is newer than tracked
         id: branch_check
@@ -58,24 +61,20 @@ jobs:
       - name: Compare kernel patches
         id: kernel_diff
         run: |
-          PESA_KERNEL=/tmp/pesa1234/target/linux/mediatek/patches-6.12
+          PESA_KERNEL="$(ls -d /tmp/pesa1234/target/linux/mediatek/patches-* 2>/dev/null | sort -V | tail -n1)"
           OUR_KERNEL=patches/kernel
+          if [ -z "$PESA_KERNEL" ]; then
+            echo "No mediatek kernel patches directory found in pesa1234/openwrt"
+            exit 1
+          fi
 
           NEW_PATCHES=""
           CHANGED_PATCHES=""
           REMOVED_PATCHES=""
 
-          # Load excluded patches list
-          EXCLUDED=$(cat mt6000-overlay/patches/mt76/EXCLUDED.md 2>/dev/null | grep '^\| \`' | grep -o '\`[^`]*\.patch\`' | tr -d '`' || true)
-
           for f in $PESA_KERNEL/999-*.patch; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
-            # Skip intentionally excluded patches
-            if echo "$EXCLUDED" | grep -q "^$name$"; then
-              echo "Skipping excluded: $name"
-              continue
-            fi
             if [ ! -f "$OUR_KERNEL/$name" ]; then
               NEW_PATCHES="$NEW_PATCHES\n- ➕ NEW: \`$name\`"
             elif ! diff -q "$f" "$OUR_KERNEL/$name" > /dev/null 2>&1; then
@@ -107,15 +106,19 @@ jobs:
       - name: Compare mt76 patches
         id: mt76_diff
         run: |
-          PESA_MT76=/tmp/pesa1234-mt76/patches
+          PESA_MT76=/tmp/pesa1234/package/kernel/mt76/patches
           OUR_MT76=patches/mt76
+          if [ ! -d "$PESA_MT76" ]; then
+            echo "No mt76 patch directory found in pesa1234/openwrt"
+            exit 1
+          fi
 
           NEW_PATCHES=""
           CHANGED_PATCHES=""
           REMOVED_PATCHES=""
 
           # Load excluded patches list
-          EXCLUDED=$(cat mt6000-overlay/patches/mt76/EXCLUDED.md 2>/dev/null | grep '^\| \`' | grep -o '\`[^`]*\.patch\`' | tr -d '`' || true)
+          EXCLUDED=$(grep -o '\`[^`]*\.patch\`' patches/mt76/EXCLUDED.md 2>/dev/null | tr -d '`' || true)
 
           for f in $PESA_MT76/*.patch; do
             [ -f "$f" ] || continue
@@ -157,14 +160,57 @@ jobs:
         id: feeds_check
         run: |
           PESA_FEEDS=/tmp/pesa1234/feeds.conf.default
-          OUR_FEEDS=feeds.conf.default
+          OUR_FEEDS=config/feeds.conf.default
+          NORMALIZED_PESA=/tmp/pesa_feeds_normalized.txt
+          NORMALIZED_OUR=/tmp/our_feeds_normalized.txt
 
-          if [ -f "$OUR_FEEDS" ] && ! diff -q "$PESA_FEEDS" "$OUR_FEEDS" > /dev/null 2>&1; then
+          sed \
+            -e 's#https://github.com/pesa1234/packages.git#https://github.com/darkworon/packages.git#' \
+            -e 's#https://github.com/pesa1234/luci.git#https://github.com/darkworon/luci.git#' \
+            "$PESA_FEEDS" | grep -Ev '^[[:space:]]*(#|$)' > "$NORMALIZED_PESA"
+          grep -Ev '^[[:space:]]*(#|$)' "$OUR_FEEDS" > "$NORMALIZED_OUR"
+
+          if ! diff -q "$NORMALIZED_PESA" "$NORMALIZED_OUR" > /dev/null 2>&1; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
-            diff "$OUR_FEEDS" "$PESA_FEEDS" > /tmp/feeds_delta.txt || true
+            diff "$NORMALIZED_OUR" "$NORMALIZED_PESA" > /tmp/feeds_delta.txt || true
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
             echo "(no changes)" > /tmp/feeds_delta.txt
+          fi
+
+      - name: Compare overlay files
+        id: overlay_diff
+        run: |
+          DELTA=""
+
+          check_file() {
+            local upstream="$1"
+            local ours="$2"
+            local label="$3"
+
+            if [ ! -f "$ours" ]; then
+              DELTA="$DELTA\n- ➕ MISSING LOCAL: \`$label\`"
+            elif ! diff -q "$upstream" "$ours" > /dev/null 2>&1; then
+              DELTA="$DELTA\n- 🔄 CHANGED: \`$label\`"
+            fi
+          }
+
+          check_file \
+            /tmp/pesa1234/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup \
+            files/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup \
+            advanced_setup
+
+          check_file \
+            /tmp/pesa1234/package/kernel/mt76/Makefile \
+            files/package/kernel/mt76/Makefile \
+            package/kernel/mt76/Makefile
+
+          if [ -n "$DELTA" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            printf "%b" "$DELTA" > /tmp/overlay_delta.txt
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "(no changes)" > /tmp/overlay_delta.txt
           fi
 
       - name: Create Issue if changes detected
@@ -172,7 +218,8 @@ jobs:
           steps.branch_check.outputs.new_branch == 'true' ||
           steps.kernel_diff.outputs.has_changes == 'true' ||
           steps.mt76_diff.outputs.has_changes == 'true' ||
-          steps.feeds_check.outputs.has_changes == 'true'
+          steps.feeds_check.outputs.has_changes == 'true' ||
+          steps.overlay_diff.outputs.has_changes == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -186,6 +233,7 @@ jobs:
             const kernelDelta = fs.readFileSync('/tmp/kernel_delta.txt', 'utf8');
             const mt76Delta = fs.readFileSync('/tmp/mt76_delta.txt', 'utf8');
             const feedsDelta = fs.readFileSync('/tmp/feeds_delta.txt', 'utf8');
+            const overlayDelta = fs.readFileSync('/tmp/overlay_delta.txt', 'utf8');
 
             let body = `## pesa1234 upstream изменился\n\n`;
             body += `**Дата:** ${new Date().toISOString().split('T')[0]}\n`;
@@ -200,15 +248,20 @@ jobs:
             body += `### Kernel patches (999-* series)\n\`\`\`\n${kernelDelta}\n\`\`\`\n\n`;
             body += `### mt76 patches\n\`\`\`\n${mt76Delta}\n\`\`\`\n\n`;
             body += `### feeds.conf.default\n\`\`\`diff\n${feedsDelta}\n\`\`\`\n\n`;
+            body += `### overlay / pinned files\n\`\`\`\n${overlayDelta}\n\`\`\`\n\n`;
 
             body += `### Как обновить\n`;
             body += `\`\`\`bash\n`;
             body += `git clone --depth=1 --branch ${branch} https://github.com/pesa1234/openwrt.git /tmp/pesa1234\n`;
-            body += `git clone --depth=1 https://github.com/pesa1234/mt76.git /tmp/pesa1234-mt76\n`;
-            body += `cp /tmp/pesa1234/target/linux/mediatek/patches-6.12/999-*.patch patches/kernel/\n`;
-            body += `cp /tmp/pesa1234-mt76/patches/*.patch patches/mt76/\n`;
+            body += `KERNEL_DIR=$(ls -d /tmp/pesa1234/target/linux/mediatek/patches-* | sort -V | tail -n1)\n`;
+            body += `rm -f patches/kernel/*.patch patches/mt76/*.patch\n`;
+            body += `cp "$KERNEL_DIR"/999-*.patch patches/kernel/\n`;
+            body += `for f in /tmp/pesa1234/package/kernel/mt76/patches/*.patch; do name=$(basename "$f"); grep -Fq "$name" patches/mt76/EXCLUDED.md && continue; cp "$f" patches/mt76/; done\n`;
+            body += `sed -e 's#https://github.com/pesa1234/packages.git#https://github.com/darkworon/packages.git#' -e 's#https://github.com/pesa1234/luci.git#https://github.com/darkworon/luci.git#' /tmp/pesa1234/feeds.conf.default > config/feeds.conf.default\n`;
+            body += `cp /tmp/pesa1234/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup files/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup\n`;
+            body += `cp /tmp/pesa1234/package/kernel/mt76/Makefile files/package/kernel/mt76/Makefile\n`;
             body += `echo "${branch}" > .pesa1234-branch\n`;
-            body += `git add patches/ .pesa1234-branch && git commit -m "chore: sync patches from pesa1234 ${branch}"\n`;
+            body += `git add patches/ files/ config/ .pesa1234-branch && git commit -m "chore: sync patches from pesa1234 ${branch}"\n`;
             body += `\`\`\`\n`;
 
             await github.rest.issues.create({

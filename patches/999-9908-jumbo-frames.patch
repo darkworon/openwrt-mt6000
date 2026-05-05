@@ -1,9 +1,0 @@
-# STUB: Jumbo frame support (pesa1234)
-# Source: pesa1234/openwrt branch next-r4.8.0.rss.mtk
-# Path: target/linux/mediatek/patches-6.12/999-9908-jumbo-frames.patch
-#
-# Replace this stub with the actual patch content extracted from:
-#   git clone --depth=1 --branch next-r4.8.0.rss.mtk https://github.com/pesa1234/openwrt.git
-#   cp pesa1234-openwrt/target/linux/mediatek/patches-6.12/999-9908-jumbo-frames.patch patches/
-#
-# STUB - skipped by CI (size < 200 bytes check)
