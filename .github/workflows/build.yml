@@ -133,7 +133,7 @@ jobs:
           cd openwrt
           echo "=== DAE kernel params check ==="
           for param in CONFIG_CGROUPS CONFIG_KPROBES CONFIG_DEBUG_INFO_BTF \
-                       CONFIG_BPF_STREAM_PARSER CONFIG_NET_SCH_INGRESS \
+                       CONFIG_BPF_STREAM_PARSER CONFIG_NETKIT CONFIG_NET_SCH_INGRESS \
                        CONFIG_NET_CLS_BPF CONFIG_NET_CLS_ACT CONFIG_BPF_EVENTS; do
             val=$(grep "^$param" .config 2>/dev/null || echo "NOT SET")
             echo "  $param = $val"

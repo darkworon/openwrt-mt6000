@@ -76,7 +76,7 @@ GitHub Pages работает только на публичных репо (Fre
 **`dae-kernel.config`** — параметры ядра для DAE (eBPF transparent proxy):
 ```
 CONFIG_CGROUPS=y, CONFIG_KPROBES=y, CONFIG_DEBUG_INFO_BTF=y,
-CONFIG_BPF_STREAM_PARSER=y, CONFIG_NET_SCH_INGRESS=m,
+CONFIG_BPF_STREAM_PARSER=y, CONFIG_NETKIT=y, CONFIG_NET_SCH_INGRESS=m,
 CONFIG_NET_CLS_BPF=m, CONFIG_NET_CLS_ACT=y, CONFIG_BPF_EVENTS=y
 ```
 
