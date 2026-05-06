@@ -100,13 +100,14 @@ CONFIG_NET_CLS_BPF=m, CONFIG_NET_CLS_ACT=y, CONFIG_BPF_EVENTS=y
 3. Скопировать patches/mt76/*.patch и patches/mt76-local/*.patch → package/kernel/mt76/patches/
 4. Скопировать files/ → openwrt/ (advanced_setup и др.)
 5. feeds.conf → darkworon/packages:next-r4.mtk + darkworon/luci:next-v4
-6. make defconfig + проверка DAE параметров
-7. make tools + toolchain + target + packages + image
-8. Smoke test: firmware > 10MB, dae + zerotier в manifest
-9. Публикация Release в openwrt-mt6000-releases (прошивка + пакеты)
-10. Обновление APK index.json на GitHub Pages
-11. Ротация: оставить 5 последних релизов и Pages entries
-12. Telegram уведомление (✅/❌ + ссылка на release)
+6. Подключить darkworon/openwrt-dae как custom package `dae`
+7. make defconfig + проверка DAE параметров
+8. make tools + toolchain + target + packages + image
+9. Smoke test: firmware > 10MB, dae + zerotier в manifest
+10. Публикация Release в openwrt-mt6000-releases (прошивка + пакеты)
+11. Обновление APK index.json на GitHub Pages
+12. Ротация: оставить 5 последних релизов и Pages entries
+13. Telegram уведомление (✅/❌ + ссылка на release)
 ```
 
 ### Как работает трекинг (track-pesa1234.yml)
@@ -238,6 +239,7 @@ gh workflow run build.yml --repo darkworon/openwrt-mt6000
 | [pesa1234/mt76](https://github.com/pesa1234/mt76) | Источник WiFi патчей (отслеживается) |
 | [darkworon/packages](https://github.com/darkworon/packages) | Наш форк feeds/packages |
 | [darkworon/luci](https://github.com/darkworon/luci) | Наш форк feeds/luci |
+| [darkworon/openwrt-dae](https://github.com/darkworon/openwrt-dae) | Custom OpenWrt package `dae`, собирает свежий dae с outbound salamander |
 | [darkworon/openwrt-mt6000-immortalwrt-packages](https://github.com/darkworon/openwrt-mt6000-immortalwrt-packages) | Форк immortalwrt/packages — содержит пакет `dae` |
 | [darkworon/openwrt-mt6000-luci-app-dae](https://github.com/darkworon/openwrt-mt6000-luci-app-dae) | Форк sbwml/luci-app-dae — LuCI интерфейс для dae |
 | [darkworon/openwrt-mt6000-releases](https://github.com/darkworon/openwrt-mt6000-releases) | Прошивки и APK repo |

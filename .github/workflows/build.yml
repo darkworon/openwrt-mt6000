@@ -102,15 +102,41 @@ jobs:
             echo "No overlay files — skipping"
           fi
 
-      - name: Add dae packages (from immortalwrt)
+      - name: Resolve latest dae source
         run: |
-          git clone --depth=1 https://github.com/darkworon/openwrt-mt6000-immortalwrt-packages.git /tmp/imrtpkg
+          DAE_SOURCE_URL="${DAE_SOURCE_URL:-https://github.com/daeuniverse/dae.git}"
+          DAE_SOURCE_REF="${DAE_SOURCE_REF:-main}"
+          DAE_SOURCE_VERSION="$(git ls-remote "$DAE_SOURCE_URL" "refs/heads/$DAE_SOURCE_REF" | awk '{print $1}')"
+          if [ -z "$DAE_SOURCE_VERSION" ]; then
+            DAE_SOURCE_VERSION="$(git ls-remote "$DAE_SOURCE_URL" "$DAE_SOURCE_REF" | awk 'NR == 1 {print $1}')"
+          fi
+          if [ -z "$DAE_SOURCE_VERSION" ]; then
+            echo "Cannot resolve DAE_SOURCE_REF=$DAE_SOURCE_REF from $DAE_SOURCE_URL"
+            exit 1
+          fi
+
+          {
+            echo "DAE_PKG_VERSION=${DAE_PKG_VERSION:-2.0.0_alpha_git}"
+            echo "DAE_SOURCE_URL=$DAE_SOURCE_URL"
+            echo "DAE_SOURCE_REF=$DAE_SOURCE_REF"
+            echo "DAE_SOURCE_VERSION=$DAE_SOURCE_VERSION"
+            echo "DAE_SOURCE_DATE=${DAE_SOURCE_DATE:-git}"
+            echo "DAE_OUTBOUND_REPO=${DAE_OUTBOUND_REPO:-https://github.com/darkworon/outbound.git}"
+            echo "DAE_OUTBOUND_REF=${DAE_OUTBOUND_REF:-stickyip-salamander}"
+            echo "DAE_MIRROR_HASH=${DAE_MIRROR_HASH:-skip}"
+          } >> "$GITHUB_ENV"
+
+          echo "dae source: $DAE_SOURCE_URL $DAE_SOURCE_REF -> $DAE_SOURCE_VERSION"
+
+      - name: Add dae packages (from openwrt-dae)
+        run: |
+          git clone --depth=1 https://github.com/darkworon/openwrt-dae.git /tmp/openwrt-dae
           git clone --depth=1 https://github.com/darkworon/openwrt-mt6000-luci-app-dae.git /tmp/luci-app-dae
-          mkdir -p openwrt/package/feeds/dae openwrt/package/feeds/luci-app-dae
-          cp -r /tmp/imrtpkg/net/dae openwrt/package/feeds/dae/
+          /tmp/openwrt-dae/scripts/install-package.sh openwrt
+          mkdir -p openwrt/package/feeds/luci-app-dae
           cp -r /tmp/luci-app-dae/. openwrt/package/feeds/luci-app-dae/
-          echo "dae packages copied"
-          ls openwrt/package/feeds/dae/
+          echo "dae package installed from openwrt-dae"
+          ls openwrt/package/custom/dae/
 
       - name: Copy diffconfig and feeds
         run: |
@@ -346,6 +372,11 @@ jobs:
           - packages: darkworon/packages @ next-r4.mtk
           - luci: darkworon/luci @ next-v4
           - video: openwrt/video @ main
+          - dae: darkworon/openwrt-dae
+
+          ### DAE
+          - dae source: \`${DAE_SOURCE_REF:-main}\` @ \`${DAE_SOURCE_VERSION:-unknown}\`
+          - outbound replace: \`${DAE_OUTBOUND_REPO:-https://github.com/darkworon/outbound.git}\` @ \`${DAE_OUTBOUND_REF:-stickyip-salamander}\`
 
           ### Upstream
           - openwrt/openwrt @ \`${OPENWRT_SHA}\`
