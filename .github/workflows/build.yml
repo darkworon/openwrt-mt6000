@@ -128,16 +128,6 @@ jobs:
 
           echo "dae source: $DAE_SOURCE_URL $DAE_SOURCE_REF -> $DAE_SOURCE_VERSION"
 
-      - name: Add dae packages (from openwrt-dae)
-        run: |
-          git clone --depth=1 https://github.com/darkworon/openwrt-dae.git /tmp/openwrt-dae
-          git clone --depth=1 https://github.com/darkworon/openwrt-mt6000-luci-app-dae.git /tmp/luci-app-dae
-          /tmp/openwrt-dae/scripts/install-package.sh openwrt
-          mkdir -p openwrt/package/feeds/luci-app-dae
-          cp -r /tmp/luci-app-dae/. openwrt/package/feeds/luci-app-dae/
-          echo "dae package installed from openwrt-dae"
-          ls openwrt/package/custom/dae/
-
       - name: Copy diffconfig and feeds
         run: |
           cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
@@ -148,6 +138,16 @@ jobs:
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+
+      - name: Add dae packages (from openwrt-dae)
+        run: |
+          git clone --depth=1 https://github.com/darkworon/openwrt-dae.git /tmp/openwrt-dae
+          git clone --depth=1 https://github.com/darkworon/openwrt-mt6000-luci-app-dae.git /tmp/luci-app-dae
+          /tmp/openwrt-dae/scripts/install-package.sh openwrt
+          mkdir -p openwrt/package/custom/luci-app-dae
+          rsync -a --delete /tmp/luci-app-dae/luci-app-dae/ openwrt/package/custom/luci-app-dae/
+          echo "dae package installed from openwrt-dae"
+          ls openwrt/package/custom/dae/
 
       - name: Expand config
         run: |
