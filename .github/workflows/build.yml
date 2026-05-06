@@ -10,6 +10,23 @@ on:
   schedule:
     - cron: '0 5 * * 5'  # пятница 05:00 UTC (после track вс+ср)
   workflow_dispatch:
+    inputs:
+      openwrt_ref:
+        description: "openwrt/openwrt branch/tag/ref"
+        default: "main"
+        required: true
+      dae_source_ref:
+        description: "dae branch/tag/ref to resolve when dae_source_version is latest"
+        default: "main"
+        required: true
+      dae_source_version:
+        description: "dae commit hash, or latest to resolve dae_source_ref"
+        default: "latest"
+        required: true
+      dae_outbound_ref:
+        description: "outbound branch/tag/ref with salamander support"
+        default: "stickyip-salamander"
+        required: true
 
 permissions:
   contents: write
@@ -18,6 +35,11 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     timeout-minutes: 360
+    env:
+      OPENWRT_REF: ${{ github.event.inputs.openwrt_ref || 'main' }}
+      DAE_SOURCE_REF: ${{ github.event.inputs.dae_source_ref || 'main' }}
+      DAE_SOURCE_VERSION: ${{ github.event.inputs.dae_source_version || 'latest' }}
+      DAE_OUTBOUND_REF: ${{ github.event.inputs.dae_outbound_ref || 'stickyip-salamander' }}
 
     steps:
       - name: Checkout this repo (patches + config)
@@ -61,7 +83,7 @@ jobs:
       - name: Clone official OpenWrt (upstream)
         run: |
           rm -rf openwrt
-          git clone --depth=1 --branch main \
+          git clone --depth=1 --branch "${OPENWRT_REF:-main}" \
             https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
           echo "OpenWrt upstream SHA: $(git rev-parse HEAD)"

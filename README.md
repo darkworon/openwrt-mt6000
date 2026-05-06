@@ -84,14 +84,12 @@ CONFIG_NET_CLS_BPF=m, CONFIG_NET_CLS_ACT=y, CONFIG_BPF_EVENTS=y
 
 ## CI/CD Pipeline
 
-GitHub Actions is the build path for packages and firmware images.
+GitHub Actions is the build path for the full firmware image. The custom `dae`
+package is not built as a standalone artifact here; it is injected into the
+OpenWrt tree from `darkworon/openwrt-dae` and built together with the rest of
+the MT6000 firmware so kernel packages and package indexes stay consistent.
 
-### Manual package build
-
-`build-dae-package.yml` builds the MT6000 OpenWrt target far enough to produce
-the custom `dae` IPK from `darkworon/openwrt-dae`.
-
-Useful variables:
+Useful workflow variables:
 
 ```text
 DAE_SOURCE_REF=main
@@ -109,8 +107,7 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 |----------|---------|------------|
 | `validate.yml` | Push в patches/ | Быстрая валидация патчей (~20-40 мин), уведомление в Telegram при ошибке |
 | `track-pesa1234.yml` | Вс + Ср 04:00 UTC, ручной | Проверяет обновления у pesa1234, создаёт Issue (пропускает EXCLUDED.md) |
-| `build-dae-package.yml` | Ручной | Собирает свежий custom `dae` IPK для MT6000 |
-| `build.yml` | Пт 05:00 UTC, push в patches/config/files, ручной | Полная сборка и публикация |
+| `build.yml` | Пт 05:00 UTC, push в patches/config/files, ручной | Полная сборка и публикация, включая custom `dae` |
 
 ### Как работает сборка (build.yml)
 
