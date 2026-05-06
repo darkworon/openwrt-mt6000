@@ -84,16 +84,12 @@ CONFIG_NET_CLS_BPF=m, CONFIG_NET_CLS_ACT=y, CONFIG_BPF_EVENTS=y
 
 ## CI/CD Pipeline
 
-GitLab CI is the primary path for ad-hoc package/image builds. GitHub Actions
-is still present for the older scheduled release workflow.
+GitHub Actions is the build path for packages and firmware images.
 
-### GitLab CI
+### Manual package build
 
-`build-dae-package` builds the MT6000 OpenWrt target far enough to produce the
-custom `dae` IPK from `darkworon/openwrt-dae`.
-
-`build-image` builds the full MT6000 firmware image. It is manual by default;
-set `BUILD_IMAGE=1` when starting a pipeline to run it automatically.
+`build-dae-package.yml` builds the MT6000 OpenWrt target far enough to produce
+the custom `dae` IPK from `darkworon/openwrt-dae`.
 
 Useful variables:
 
@@ -102,7 +98,6 @@ DAE_SOURCE_REF=main
 DAE_SOURCE_VERSION=latest
 DAE_OUTBOUND_REF=stickyip-salamander
 OPENWRT_REF=main
-BUILD_IMAGE=1
 ```
 
 As of May 6, 2026, upstream `daeuniverse/dae` uses `main`, not `master`.
@@ -114,6 +109,7 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 |----------|---------|------------|
 | `validate.yml` | Push в patches/ | Быстрая валидация патчей (~20-40 мин), уведомление в Telegram при ошибке |
 | `track-pesa1234.yml` | Вс + Ср 04:00 UTC, ручной | Проверяет обновления у pesa1234, создаёт Issue (пропускает EXCLUDED.md) |
+| `build-dae-package.yml` | Ручной | Собирает свежий custom `dae` IPK для MT6000 |
 | `build.yml` | Пт 05:00 UTC, push в patches/config/files, ручной | Полная сборка и публикация |
 
 ### Как работает сборка (build.yml)
