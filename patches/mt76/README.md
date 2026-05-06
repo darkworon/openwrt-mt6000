@@ -1,7 +1,9 @@
 # mt76 patches (pesa1234 series)
 
 Patches applied to `package/kernel/mt76/patches/` during build.
-Additional local compatibility patches live in `patches/mt76-local/` and are copied into the same OpenWrt patch directory.
+Additional local compatibility patches live in `patches/mt76-local/`; they are
+copied into the same OpenWrt patch directory, so filename order controls when
+they apply.
 
 ## Source
 

@@ -41,6 +41,7 @@
 
 `patches/mt76/` содержит 93 применяемых патча из `pesa1234/openwrt/package/kernel/mt76/patches/`.
 Патч `0018-*set_qos_map*` исключен через `patches/mt76/EXCLUDED.md`; вместо него `patches/mt76-local/0018-compat-*` оставляет только enum, который нужен последующим upstream-патчам как контекст.
+`patches/mt76-local/9999-99-compat-*` адаптирует стек mt76 к текущему OpenWrt/mac80211 6.18.26 без патчей mac80211.
 
 ## Обновление
 

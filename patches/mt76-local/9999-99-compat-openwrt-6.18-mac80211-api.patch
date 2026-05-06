@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: darkworon <darkworon@users.noreply.github.com>
+Date: Wed, 6 May 2026 03:48:00 +0300
+Subject: [PATCH] mt76: compat with OpenWrt mac80211 6.18 APIs
+
+OpenWrt backports 6.18.26 no longer exposes a few helpers used by the
+pesa1234 mt76 patch stack. Keep the driver buildable without patching
+mac80211 itself:
+
+- use the local mt76 scanning bit instead of ieee80211_get_scanning()
+- provide the missing ieee80211_hw_clear() flag wrapper locally
+- drop direct calls to internal mac80211 throughput LED helpers
+
+The LED byte counters are internal to mac80211, while mt76 still keeps
+its own WED station byte statistics below.
+---
+ mac80211.c        | 3 ++-
+ mt76.h            | 5 +++++
+ mt76_connac_mac.c | 3 ---
+ mt7915/mmio.c     | 5 -----
+ 4 files changed, 7 insertions(+), 9 deletions(-)
+
+--- a/mac80211.c
++++ b/mac80211.c
+@@ -1069,7 +1069,8 @@ int __mt76_set_channel(struct mt76_phy *
+ 	if (!offchannel)
+ 		phy->main_chandef = *chandef;
+ 
+-	if (chandef->chan != phy->main_chandef.chan || ieee80211_get_scanning(phy->hw))
++	if (chandef->chan != phy->main_chandef.chan ||
++	    test_bit(MT76_SCANNING, &phy->state))
+ 		memset(phy->chan_state, 0, sizeof(*phy->chan_state));
+ 
+ 	ret = dev->drv->set_channel(phy);
+--- a/mt76.h
++++ b/mt76.h
+@@ -21,6 +21,11 @@
+ #include <linux/soc/mediatek/mtk_wed.h>
+ #include <net/netlink.h>
+ #include <net/mac80211.h>
++#ifndef ieee80211_hw_clear
++#define ieee80211_hw_clear(hw, flg) \
++	__clear_bit(IEEE80211_HW_##flg, (hw)->flags)
++#endif
++
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(6,6,0)
+ #include <net/page_pool.h>
+ #else
+--- a/mt76_connac_mac.c
++++ b/mt76_connac_mac.c
+@@ -640,9 +640,6 @@ bool mt76_connac2_mac_fill_txs(struct mt
+ 
+ 	/* PPDU based reporting */
+ 	if (FIELD_GET(MT_TXS0_TXS_FORMAT, txs) > 1) {
+-		ieee80211_tpt_led_trig_tx(mphy->hw,
+-			le32_get_bits(txs_data[5], MT_TXS5_MPDU_TX_BYTE) -
+-			le32_get_bits(txs_data[7], MT_TXS7_MPDU_RETRY_BYTE));
+ 		stats->tx_bytes +=
+ 			le32_get_bits(txs_data[5], MT_TXS5_MPDU_TX_BYTE) -
+ 			le32_get_bits(txs_data[7], MT_TXS7_MPDU_RETRY_BYTE);
+--- a/mt7915/mmio.c
++++ b/mt7915/mmio.c
+@@ -592,7 +592,6 @@ static void mt7915_mmio_wed_update_rx_st
+ 	int idx = le16_to_cpu(stats->wlan_idx);
+ 	struct mt7915_dev *dev;
+ 	struct mt76_wcid *wcid;
+-	struct mt76_phy *mphy;
+ 
+ 	dev = container_of(wed, struct mt7915_dev, mt76.mmio.wed);
+ 
+@@ -600,10 +599,6 @@ static void mt7915_mmio_wed_update_rx_st
+ 
+ 	wcid = mt76_wcid_ptr(dev, idx);
+ 	if (wcid) {
+-		mphy = mt76_dev_phy(&dev->mt76, wcid->phy_idx);
+-		ieee80211_tpt_led_trig_rx(mphy->hw,
+-					  le32_to_cpu(stats->rx_byte_cnt));
+-
+ 		wcid->stats.rx_bytes += le32_to_cpu(stats->rx_byte_cnt);
+ 		wcid->stats.rx_packets += le32_to_cpu(stats->rx_pkt_cnt);
+ 		wcid->stats.rx_errors += le32_to_cpu(stats->rx_err_cnt);
