@@ -606,7 +606,7 @@ jobs:
 
           ### Feeds
           - packages: darkworon/packages @ next-r4.mtk
-          - luci: darkworon/luci @ next-v4
+          - luci: darkworon/openwrt-mt6000-luci @ next-v4
           - video: openwrt/video @ main
           - dae: darkworon/openwrt-dae
           - dae outbound: \`${DAE_OUTBOUND_REPO:-https://github.com/darkworon/outbound.git}\` @ \`${DAE_OUTBOUND_REF:-stickyip-salamander}\`

@@ -18,7 +18,7 @@ darkworon/openwrt-mt6000          ← этот репо (ПРИВАТНЫЙ)
   │
   ├─ feeds используют:
   │    darkworon/packages          ← форк pesa1234/packages (ветка next-r4.mtk)
-  │    darkworon/luci              ← форк pesa1234/luci (ветка next-v4)
+  │    darkworon/openwrt-mt6000-luci ← форк pesa1234/luci (ветка next-v4)
   │
   └─ CI публикует в:
        darkworon/openwrt-mt6000-releases  ← (ПУБЛИЧНЫЙ)
@@ -132,7 +132,7 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 2. Скопировать patches/kernel/*.patch → актуальный target/linux/mediatek/patches-*/
 3. Скопировать patches/mt76/*.patch и patches/mt76-local/*.patch → package/kernel/mt76/patches/
 4. Скопировать files/ → openwrt/ (advanced_setup и др.)
-5. feeds.conf → darkworon/packages:next-r4.mtk + darkworon/luci:next-v4
+5. feeds.conf → darkworon/packages:next-r4.mtk + darkworon/openwrt-mt6000-luci:next-v4
 6. Зафиксировать Go toolchain patchlevel на `1.26.2`
 7. Подключить darkworon/openwrt-dae как custom package `dae`
 8. Проверить, что custom `dae` собирается с `hysteria2`/`hy2` outbound и Salamander
@@ -243,7 +243,7 @@ gh api repos/darkworon/openwrt-mt6000-releases/pages -X POST \
 
 # 4. Убедиться что есть форки packages и luci
 # darkworon/packages (fork pesa1234/packages, ветка next-r4.mtk)
-# darkworon/luci (fork pesa1234/luci, ветка next-v4)
+# darkworon/openwrt-mt6000-luci (fork pesa1234/luci, ветка next-v4)
 
 # 5. Установить секреты
 gh secret set TG_BOT_TOKEN --repo darkworon/openwrt-mt6000 --body "<token>"
@@ -273,7 +273,7 @@ gh workflow run build.yml --repo darkworon/openwrt-mt6000
 | [pesa1234/openwrt](https://github.com/pesa1234/openwrt) | Источник патчей (отслеживается, не используется напрямую) |
 | [pesa1234/mt76](https://github.com/pesa1234/mt76) | Источник WiFi патчей (отслеживается) |
 | [darkworon/packages](https://github.com/darkworon/packages) | Наш форк feeds/packages |
-| [darkworon/luci](https://github.com/darkworon/luci) | Наш форк feeds/luci |
+| [darkworon/openwrt-mt6000-luci](https://github.com/darkworon/openwrt-mt6000-luci) | Наш форк feeds/luci |
 | [darkworon/openwrt-dae](https://github.com/darkworon/openwrt-dae) | Custom OpenWrt package `dae`, собирает свежий dae с outbound salamander |
 | [darkworon/outbound](https://github.com/darkworon/outbound) | DAE outbound fork с `hysteria2`/`hy2` и Salamander |
 | [darkworon/openwrt-mt6000-immortalwrt-packages](https://github.com/darkworon/openwrt-mt6000-immortalwrt-packages) | Форк immortalwrt/packages — содержит пакет `dae` |
