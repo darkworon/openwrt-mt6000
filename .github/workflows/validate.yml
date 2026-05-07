@@ -65,6 +65,18 @@ jobs:
           cp -v "$PATCHES_DIR"/*.patch "$TARGET_DIR/" 2>/dev/null || true
           echo "kernel patches: $(ls $PATCHES_DIR/*.patch 2>/dev/null | wc -l)"
 
+      - name: Apply DAE kernel config
+        run: |
+          KERNEL_CONFIG="$(ls openwrt/target/linux/mediatek/filogic/config-* 2>/dev/null | sort -V | tail -n1)"
+          if [ -z "$KERNEL_CONFIG" ]; then
+            echo "No mediatek/filogic kernel config found"
+            exit 1
+          fi
+
+          openwrt/scripts/kconfig.pl + "$KERNEL_CONFIG" mt6000-overlay/config/dae-kernel.config \
+            > "$KERNEL_CONFIG.new"
+          mv "$KERNEL_CONFIG.new" "$KERNEL_CONFIG"
+
       - name: Apply mt76 patches
         run: |
           TARGET_DIR="openwrt/package/kernel/mt76/patches"

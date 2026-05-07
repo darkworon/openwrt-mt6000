@@ -341,6 +341,12 @@ jobs:
               missing=1
             fi
           done
+          if grep -qx '# CONFIG_NET_SCH_BPF is not set' "$KERNEL_CONFIG"; then
+            echo "OK: CONFIG_NET_SCH_BPF is disabled"
+          else
+            echo "FAIL: CONFIG_NET_SCH_BPF is not pinned disabled in $KERNEL_CONFIG"
+            missing=1
+          fi
           exit "$missing"
 
       - name: Build tools & toolchain

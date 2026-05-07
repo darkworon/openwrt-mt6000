@@ -91,6 +91,7 @@ GitHub Pages работает только на публичных репо (Fre
 ```
 CONFIG_BPF_STREAM_PARSER=y
 CONFIG_NETKIT=y
+# CONFIG_NET_SCH_BPF is not set
 ```
 Остальные DAE kernel requirements задаются через обычный OpenWrt `.config`
 как `CONFIG_KERNEL_*` и `kmod-*` package selections.
