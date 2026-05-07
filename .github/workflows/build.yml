@@ -224,6 +224,10 @@ jobs:
           if "$(BPF_DEPENDS)" not in text:
               raise SystemExit("expected $(BPF_DEPENDS) not found in dae Makefile")
           text = text.replace("$(BPF_DEPENDS)", "", 1)
+          text = text.replace(
+              "OUTBOUND_DIR:=$(PKG_BUILD_DIR)/.openwrt-dae-outbound",
+              "OUTBOUND_DIR=$(PKG_BUILD_DIR)/.openwrt-dae-outbound",
+          )
 
           config_block = (
               "define Package/dae/config\n"
@@ -247,6 +251,7 @@ jobs:
           PY
           ! grep -q '$(BPF_DEPENDS)' package/custom/dae/Makefile
           grep -q 'select NEED_BPF_TOOLCHAIN' package/custom/dae/Makefile
+          grep -q '^OUTBOUND_DIR=$(PKG_BUILD_DIR)/.openwrt-dae-outbound$' package/custom/dae/Makefile
 
       - name: Verify dae Hysteria2 outbound
         run: |
