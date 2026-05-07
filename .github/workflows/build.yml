@@ -218,15 +218,15 @@ jobs:
               raise SystemExit("expected $(BPF_DEPENDS) not found in dae Makefile")
           text = text.replace("$(BPF_DEPENDS)", "", 1)
 
-          config_block = """define Package/dae/config
-            config DAE_NEED_BPF_TOOLCHAIN
-              bool
-              depends on PACKAGE_dae
-              select NEED_BPF_TOOLCHAIN
-              default y
-          endef
-
-          """
+          config_block = (
+              "define Package/dae/config\n"
+              "  config DAE_NEED_BPF_TOOLCHAIN\n"
+              "    bool\n"
+              "    depends on PACKAGE_dae\n"
+              "    select NEED_BPF_TOOLCHAIN\n"
+              "    default y\n"
+              "endef\n\n"
+          )
           if "select NEED_BPF_TOOLCHAIN" not in text:
               text = re.sub(
                   r"\n(?=define Package/dae-geoip\n)",
