@@ -46,6 +46,8 @@ jobs:
           key: openwrt-toolchain-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**', 'mt6000-overlay/config/mt6000.diffconfig') }}
           restore-keys: |
             openwrt-toolchain-
+            validate-toolchain-
+            tools-openwrt-
 
       - name: Apply mt76 overlay (Makefile pin)
         run: |

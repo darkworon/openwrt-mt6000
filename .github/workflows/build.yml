@@ -89,6 +89,8 @@ jobs:
           key: openwrt-toolchain-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**', 'mt6000-overlay/config/mt6000.diffconfig') }}
           restore-keys: |
             openwrt-toolchain-
+            validate-toolchain-
+            tools-openwrt-
 
       - name: Apply kernel patches (pesa1234 series)
         run: |
