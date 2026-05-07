@@ -150,9 +150,8 @@ jobs:
 
           echo "dae source: $DAE_SOURCE_URL $DAE_SOURCE_REF -> $DAE_SOURCE_VERSION"
 
-      - name: Copy diffconfig and feeds
+      - name: Copy feeds
         run: |
-          cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
           cp mt6000-overlay/config/feeds.conf.default openwrt/feeds.conf.default
 
       - name: Update feeds
@@ -188,6 +187,13 @@ jobs:
           grep -q 'case "salamander"' \
             /tmp/dae-outbound-check/protocol/hysteria2/client/client.go
           test -f /tmp/dae-outbound-check/protocol/hysteria2/client/salamander.go
+
+      - name: Copy diffconfig
+        run: |
+          cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
+          echo "=== Requested package config ==="
+          grep -E '^CONFIG_PACKAGE_(dae|luci-app-dae|adguardhome|zerotier|kmod-sched|kmod-tcp-bbr)=' \
+            openwrt/.config
 
       - name: Expand config
         run: |
