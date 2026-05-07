@@ -210,30 +210,33 @@ jobs:
           cd openwrt
           python3 <<'PY'
           from pathlib import Path
+          import re
 
           makefile = Path("package/custom/dae/Makefile")
           text = makefile.read_text()
-          old = """  DEPENDS:=$(GO_ARCH_DEPENDS) $(BPF_DEPENDS) \\
-            +ca-bundle +kmod-sched-core +kmod-sched-bpf +kmod-xdp-sockets-diag \\
-            +kmod-veth
-          endef
-          """
-          new = """  DEPENDS:=$(GO_ARCH_DEPENDS) @HAS_BPF_TOOLCHAIN \\
-            +ca-bundle +kmod-sched-core +kmod-sched-bpf +kmod-xdp-sockets-diag \\
-            +kmod-veth
-          endef
+          if "$(BPF_DEPENDS)" not in text:
+              raise SystemExit("expected $(BPF_DEPENDS) not found in dae Makefile")
+          text = text.replace("$(BPF_DEPENDS)", "@HAS_BPF_TOOLCHAIN", 1)
 
-          define Package/dae/config
+          config_block = """define Package/dae/config
             config DAE_NEED_BPF_TOOLCHAIN
               bool
               depends on PACKAGE_dae
               select NEED_BPF_TOOLCHAIN
               default y
           endef
+
           """
-          if old not in text:
-              raise SystemExit("expected dae dependency block not found")
-          makefile.write_text(text.replace(old, new, 1))
+          if "select NEED_BPF_TOOLCHAIN" not in text:
+              text = re.sub(
+                  r"\n(?=define Package/dae-geoip\n)",
+                  "\n" + config_block,
+                  text,
+                  count=1,
+              )
+          if "select NEED_BPF_TOOLCHAIN" not in text:
+              raise SystemExit("failed to insert dae BPF toolchain config")
+          makefile.write_text(text)
           PY
           grep -q '@HAS_BPF_TOOLCHAIN' package/custom/dae/Makefile
           grep -q 'select NEED_BPF_TOOLCHAIN' package/custom/dae/Makefile
