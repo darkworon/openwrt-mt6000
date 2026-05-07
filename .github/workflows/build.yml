@@ -71,18 +71,6 @@ jobs:
           restore-keys: |
             ccache-mt6000-
 
-      - name: Cache OpenWrt tools/toolchain
-        uses: actions/cache@v4
-        with:
-          path: |
-            openwrt/staging_dir/host
-            openwrt/staging_dir/hostpkg
-            openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
-          key: tools-openwrt-${{ hashFiles('openwrt/tools/**') }}
-          restore-keys: |
-            validate-toolchain-
-            tools-openwrt-
-
       - name: Clone official OpenWrt (upstream)
         run: |
           rm -rf openwrt
@@ -90,6 +78,17 @@ jobs:
             https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
           echo "OpenWrt upstream SHA: $(git rev-parse HEAD)"
+
+      - name: Cache OpenWrt tools/toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/hostpkg
+            openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
+          key: openwrt-toolchain-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**', 'mt6000-overlay/config/mt6000.diffconfig') }}
+          restore-keys: |
+            openwrt-toolchain-
 
       - name: Apply kernel patches (pesa1234 series)
         run: |

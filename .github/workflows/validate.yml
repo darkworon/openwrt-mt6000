@@ -30,6 +30,12 @@ jobs:
             python3-setuptools rsync swig unzip zlib1g-dev \
             file wget curl libelf-dev dwarves
 
+      - name: Clone OpenWrt
+        run: |
+          rm -rf openwrt
+          git clone --depth=1 --branch main https://github.com/openwrt/openwrt.git openwrt
+          echo "OpenWrt SHA: $(git -C openwrt rev-parse --short HEAD)"
+
       - name: Cache toolchain
         uses: actions/cache@v4
         with:
@@ -37,14 +43,9 @@ jobs:
             openwrt/staging_dir/host
             openwrt/staging_dir/hostpkg
             openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
-          key: validate-toolchain-${{ hashFiles('mt6000-overlay/config/mt6000.diffconfig') }}
-          restore-keys: validate-toolchain-
-
-      - name: Clone OpenWrt
-        run: |
-          rm -rf openwrt
-          git clone --depth=1 --branch main https://github.com/openwrt/openwrt.git openwrt
-          echo "OpenWrt SHA: $(git -C openwrt rev-parse --short HEAD)"
+          key: openwrt-toolchain-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**', 'mt6000-overlay/config/mt6000.diffconfig') }}
+          restore-keys: |
+            openwrt-toolchain-
 
       - name: Apply mt76 overlay (Makefile pin)
         run: |
