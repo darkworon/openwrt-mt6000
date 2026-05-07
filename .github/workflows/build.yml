@@ -181,6 +181,9 @@ jobs:
 
           echo "dae source: $DAE_SOURCE_URL $DAE_SOURCE_REF -> $DAE_SOURCE_VERSION"
 
+      - name: Verify pesa1234 sync
+        run: mt6000-overlay/scripts/check-pesa1234-sync.sh
+
       - name: Copy feeds
         run: |
           cp mt6000-overlay/config/feeds.conf.default openwrt/feeds.conf.default
@@ -605,7 +608,7 @@ jobs:
           - ⚙️ **advanced_setup**: IRQ affinity + RPS autotuning
 
           ### Feeds
-          - packages: darkworon/packages @ next-r4.mtk
+          - packages: darkworon/openwrt-mt6000-packages @ next-r4.mtk
           - luci: darkworon/openwrt-mt6000-luci @ next-v4
           - video: openwrt/video @ main
           - dae: darkworon/openwrt-dae

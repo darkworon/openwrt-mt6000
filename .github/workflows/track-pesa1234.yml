@@ -165,7 +165,7 @@ jobs:
           NORMALIZED_OUR=/tmp/our_feeds_normalized.txt
 
           sed \
-            -e 's#https://github.com/pesa1234/packages.git#https://github.com/darkworon/packages.git#' \
+            -e 's#https://github.com/pesa1234/packages.git#https://github.com/darkworon/openwrt-mt6000-packages.git#' \
             -e 's#https://github.com/pesa1234/luci.git#https://github.com/darkworon/openwrt-mt6000-luci.git#' \
             "$PESA_FEEDS" | grep -Ev '^[[:space:]]*(#|$)' > "$NORMALIZED_PESA"
           grep -Ev '^[[:space:]]*(#|$)' "$OUR_FEEDS" > "$NORMALIZED_OUR"
@@ -257,7 +257,7 @@ jobs:
             body += `rm -f patches/kernel/*.patch patches/mt76/*.patch\n`;
             body += `cp "$KERNEL_DIR"/999-*.patch patches/kernel/\n`;
             body += `for f in /tmp/pesa1234/package/kernel/mt76/patches/*.patch; do name=$(basename "$f"); grep -Fq "$name" patches/mt76/EXCLUDED.md && continue; cp "$f" patches/mt76/; done\n`;
-            body += `sed -e 's#https://github.com/pesa1234/packages.git#https://github.com/darkworon/packages.git#' -e 's#https://github.com/pesa1234/luci.git#https://github.com/darkworon/openwrt-mt6000-luci.git#' /tmp/pesa1234/feeds.conf.default > config/feeds.conf.default\n`;
+            body += `sed -e 's#https://github.com/pesa1234/packages.git#https://github.com/darkworon/openwrt-mt6000-packages.git#' -e 's#https://github.com/pesa1234/luci.git#https://github.com/darkworon/openwrt-mt6000-luci.git#' /tmp/pesa1234/feeds.conf.default > config/feeds.conf.default\n`;
             body += `cp /tmp/pesa1234/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup files/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup\n`;
             body += `cp /tmp/pesa1234/package/kernel/mt76/Makefile files/package/kernel/mt76/Makefile\n`;
             body += `echo "${branch}" > .pesa1234-branch\n`;

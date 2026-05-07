@@ -17,7 +17,7 @@ jobs:
         repo:
           - { fork: 'darkworon/openwrt', upstream: 'pesa1234/openwrt', branch: 'next-r4.8.2.rss.mtk' }
           - { fork: 'darkworon/mt76', upstream: 'pesa1234/mt76', branch: 'main' }
-          - { fork: 'darkworon/packages', upstream: 'pesa1234/packages', branch: 'next-r4.mtk' }
+          - { fork: 'darkworon/openwrt-mt6000-packages', upstream: 'pesa1234/packages', branch: 'next-r4.mtk' }
           - { fork: 'darkworon/openwrt-mt6000-luci', upstream: 'pesa1234/luci', branch: 'next-v4' }
 
     steps:
