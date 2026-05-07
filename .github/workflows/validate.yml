@@ -43,11 +43,13 @@ jobs:
             openwrt/staging_dir/host
             openwrt/staging_dir/hostpkg
             openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
-          key: openwrt-toolchain-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**', 'mt6000-overlay/config/mt6000.diffconfig') }}
+          key: openwrt-toolchain-v2-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**', 'mt6000-overlay/config/mt6000.diffconfig') }}
           restore-keys: |
+            openwrt-toolchain-v2-
             openwrt-toolchain-
             validate-toolchain-
             tools-openwrt-
+          save-always: true
 
       - name: Apply mt76 overlay (Makefile pin)
         run: |
