@@ -216,7 +216,7 @@ jobs:
           text = makefile.read_text()
           if "$(BPF_DEPENDS)" not in text:
               raise SystemExit("expected $(BPF_DEPENDS) not found in dae Makefile")
-          text = text.replace("$(BPF_DEPENDS)", "@HAS_BPF_TOOLCHAIN", 1)
+          text = text.replace("$(BPF_DEPENDS)", "", 1)
 
           config_block = """define Package/dae/config
             config DAE_NEED_BPF_TOOLCHAIN
@@ -238,7 +238,7 @@ jobs:
               raise SystemExit("failed to insert dae BPF toolchain config")
           makefile.write_text(text)
           PY
-          grep -q '@HAS_BPF_TOOLCHAIN' package/custom/dae/Makefile
+          ! grep -q '$(BPF_DEPENDS)' package/custom/dae/Makefile
           grep -q 'select NEED_BPF_TOOLCHAIN' package/custom/dae/Makefile
 
       - name: Verify dae Hysteria2 outbound
