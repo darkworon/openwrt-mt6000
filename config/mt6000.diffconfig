@@ -20,6 +20,8 @@ CONFIG_NET_CLS_BPF=m
 CONFIG_NET_CLS_ACT=y
 CONFIG_DEBUG_INFO_BTF=y
 CONFIG_DEBUG_INFO_DWARF5=y
+CONFIG_PACKAGE_kmod-sched=y
+CONFIG_PACKAGE_kmod-tcp-bbr=y
 
 # pesa1234 optimizations (via patches/kernel/)
 CONFIG_RPS=y

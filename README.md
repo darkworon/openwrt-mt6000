@@ -71,7 +71,18 @@ GitHub Pages работает только на публичных репо (Fre
 
 **`mt6000.diffconfig`:**
 - Target: `mediatek/filogic`, device: `glinet_gl-mt6000`
-- Пакеты: `dae`, `adguardhome`, `zerotier-one`, `kmod-nft-offload`
+- Пакеты: `dae`, `luci-app-dae`, `adguardhome`, `zerotier`, `kmod-sched`, `kmod-tcp-bbr`
+- Hysteria2/Hy2 включён внутри `dae`: custom package `dae` заменяет `github.com/daeuniverse/outbound`
+  на `darkworon/outbound:stickyip-salamander`. Отдельный standalone package `hysteria` не нужен.
+
+**`etc/uci-defaults/99-proxy-policy-base`** — первый boot baseline под `dae + Hysteria2`:
+- отключает software/hardware flow offload в firewall;
+- включает `network.globals.packet_steering`.
+
+**`etc/sysctl.d/99-vpn-tune.conf`** — сетевой runtime tuning для VPN/QUIC:
+- `net.core.default_qdisc = fq` для pacing;
+- BBR как TCP congestion control;
+- увеличенные backlog и socket buffers.
 
 **`dae-kernel.config`** — параметры ядра для DAE (eBPF transparent proxy):
 ```
@@ -118,13 +129,14 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 4. Скопировать files/ → openwrt/ (advanced_setup и др.)
 5. feeds.conf → darkworon/packages:next-r4.mtk + darkworon/luci:next-v4
 6. Подключить darkworon/openwrt-dae как custom package `dae`
-7. make defconfig + проверка DAE параметров
-8. make tools + toolchain + target + packages + image
-9. Smoke test: firmware > 10MB, dae + zerotier в manifest
-10. Публикация Release в openwrt-mt6000-releases (прошивка + пакеты)
-11. Обновление APK index.json на GitHub Pages
-12. Ротация: оставить 5 последних релизов и Pages entries
-13. Telegram уведомление (✅/❌ + ссылка на release)
+7. Проверить, что custom `dae` собирается с `hysteria2`/`hy2` outbound и Salamander
+8. make defconfig + проверка DAE параметров и критичных пакетов
+9. make tools + toolchain + target + packages + image
+10. Smoke test: firmware > 10MB, dae + luci-app-dae + adguardhome + zerotier + pacing/BBR kmods в manifest
+11. Публикация Release в openwrt-mt6000-releases (прошивка + пакеты)
+12. Обновление APK index.json на GitHub Pages
+13. Ротация: оставить 5 последних релизов и Pages entries
+14. Telegram уведомление (✅/❌ + ссылка на release)
 ```
 
 ### Как работает трекинг (track-pesa1234.yml)
@@ -257,6 +269,7 @@ gh workflow run build.yml --repo darkworon/openwrt-mt6000
 | [darkworon/packages](https://github.com/darkworon/packages) | Наш форк feeds/packages |
 | [darkworon/luci](https://github.com/darkworon/luci) | Наш форк feeds/luci |
 | [darkworon/openwrt-dae](https://github.com/darkworon/openwrt-dae) | Custom OpenWrt package `dae`, собирает свежий dae с outbound salamander |
+| [darkworon/outbound](https://github.com/darkworon/outbound) | DAE outbound fork с `hysteria2`/`hy2` и Salamander |
 | [darkworon/openwrt-mt6000-immortalwrt-packages](https://github.com/darkworon/openwrt-mt6000-immortalwrt-packages) | Форк immortalwrt/packages — содержит пакет `dae` |
 | [darkworon/openwrt-mt6000-luci-app-dae](https://github.com/darkworon/openwrt-mt6000-luci-app-dae) | Форк sbwml/luci-app-dae — LuCI интерфейс для dae |
 | [darkworon/openwrt-mt6000-releases](https://github.com/darkworon/openwrt-mt6000-releases) | Прошивки и APK repo |

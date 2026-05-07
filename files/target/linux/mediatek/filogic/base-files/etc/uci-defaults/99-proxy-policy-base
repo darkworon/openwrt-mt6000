@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# Base first-boot tuning for the proxy-policy OpenWrt image.
+# Keep the datapath observable and predictable for dae + Hysteria2.
+
+set -eu
+
+uci -q batch <<'EOF'
+set firewall.@defaults[0].flow_offloading='0'
+set firewall.@defaults[0].flow_offloading_hw='0'
+set network.globals.packet_steering='1'
+commit firewall
+commit network
+EOF
+
+exit 0

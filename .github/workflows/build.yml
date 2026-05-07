@@ -171,10 +171,49 @@ jobs:
           echo "dae package installed from openwrt-dae"
           ls openwrt/package/custom/dae/
 
+      - name: Verify dae Hysteria2 outbound
+        run: |
+          set -e
+          grep -q 'go mod edit -replace=github.com/daeuniverse/outbound' \
+            openwrt/package/custom/dae/Makefile
+
+          rm -rf /tmp/dae-outbound-check
+          git clone "$DAE_OUTBOUND_REPO" /tmp/dae-outbound-check
+          git -C /tmp/dae-outbound-check checkout "$DAE_OUTBOUND_REF"
+
+          grep -q 'FromLinkRegister("hysteria2"' \
+            /tmp/dae-outbound-check/dialer/hysteria2/hysteria2.go
+          grep -q 'FromLinkRegister("hy2"' \
+            /tmp/dae-outbound-check/dialer/hysteria2/hysteria2.go
+          grep -q 'case "salamander"' \
+            /tmp/dae-outbound-check/protocol/hysteria2/client/client.go
+          test -f /tmp/dae-outbound-check/protocol/hysteria2/client/salamander.go
+
       - name: Expand config
         run: |
           cd openwrt
           make defconfig
+
+      - name: Verify critical packages
+        run: |
+          cd openwrt
+          echo "=== Critical package check ==="
+          missing=0
+          for symbol in \
+            CONFIG_PACKAGE_dae \
+            CONFIG_PACKAGE_luci-app-dae \
+            CONFIG_PACKAGE_adguardhome \
+            CONFIG_PACKAGE_zerotier \
+            CONFIG_PACKAGE_kmod-sched \
+            CONFIG_PACKAGE_kmod-tcp-bbr; do
+            if grep -qx "$symbol=y" .config; then
+              echo "OK: $symbol=y"
+            else
+              echo "FAIL: $symbol is not enabled"
+              missing=1
+            fi
+          done
+          exit "$missing"
 
       - name: Verify DAE kernel config
         run: |
@@ -291,15 +330,20 @@ jobs:
 
           # Проверяем manifest на ключевые пакеты
           MANIFEST=$(ls output/firmware/*.manifest 2>/dev/null | head -1)
-          if [ -n "$MANIFEST" ]; then
-            for pkg in dae zerotier-one; do
-              if grep -q "$pkg" "$MANIFEST"; then
+          if [ -z "$MANIFEST" ]; then
+            echo "FAIL: no firmware manifest found"
+            exit 1
+          fi
+          missing=0
+          for pkg in dae luci-app-dae adguardhome zerotier kmod-sched kmod-tcp-bbr; do
+              if grep -Eq "^${pkg} - " "$MANIFEST"; then
                 echo "OK: $pkg present in manifest"
               else
-                echo "WARN: $pkg not found in manifest"
+                echo "FAIL: $pkg not found in manifest"
+                missing=1
               fi
-            done
-          fi
+          done
+          exit "$missing"
 
       - name: Generate release tag
         if: github.ref == 'refs/heads/main'
@@ -395,6 +439,7 @@ jobs:
           - luci: darkworon/luci @ next-v4
           - video: openwrt/video @ main
           - dae: darkworon/openwrt-dae
+          - dae outbound: \`${DAE_OUTBOUND_REPO:-https://github.com/darkworon/outbound.git}\` @ \`${DAE_OUTBOUND_REF:-stickyip-salamander}\`
 
           ### DAE
           - dae source: \`${DAE_SOURCE_REF:-main}\` @ \`${DAE_SOURCE_VERSION:-unknown}\`
