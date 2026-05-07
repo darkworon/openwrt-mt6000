@@ -124,6 +124,30 @@ jobs:
             echo "No overlay files — skipping"
           fi
 
+      - name: Apply DAE kernel config
+        run: |
+          KERNEL_CONFIG="$(ls openwrt/target/linux/mediatek/filogic/config-* 2>/dev/null | sort -V | tail -n1)"
+          if [ -z "$KERNEL_CONFIG" ]; then
+            echo "No mediatek/filogic kernel config found"
+            exit 1
+          fi
+
+          echo "Applying mt6000-overlay/config/dae-kernel.config to $KERNEL_CONFIG"
+          openwrt/scripts/kconfig.pl + "$KERNEL_CONFIG" mt6000-overlay/config/dae-kernel.config \
+            > "$KERNEL_CONFIG.new"
+          mv "$KERNEL_CONFIG.new" "$KERNEL_CONFIG"
+
+          echo "=== DAE target kernel config ==="
+          grep -E '^(# )?CONFIG_(BPF|BPF_SYSCALL|BPF_JIT|CGROUPS|KPROBES|NET_INGRESS|NET_EGRESS|NET_SCH_INGRESS|NET_CLS_BPF|NET_CLS_ACT|BPF_STREAM_PARSER|DEBUG_INFO|DEBUG_INFO_REDUCED|DEBUG_INFO_BTF|KPROBE_EVENTS|BPF_EVENTS|NETKIT)' \
+            "$KERNEL_CONFIG" || true
+
+      - name: Verify proxy policy overlay
+        run: |
+          grep -q "set network.globals.packet_steering='1'" \
+            mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/99-proxy-policy-base
+          grep -q "net.core.default_qdisc = fq" \
+            mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/sysctl.d/99-vpn-tune.conf
+
       - name: Resolve latest dae source
         run: |
           DAE_SOURCE_URL="${DAE_SOURCE_URL:-https://github.com/daeuniverse/dae.git}"
@@ -160,15 +184,59 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      - name: Pin Go toolchain patchlevel
+        run: |
+          cd openwrt
+          GO_MAKEFILE="feeds/packages/lang/golang/golang1.26/Makefile"
+          test -f "$GO_MAKEFILE"
+          sed -i \
+            -e 's/^GO_VERSION_PATCH:=.*/GO_VERSION_PATCH:=2/' \
+            -e 's/^PKG_HASH:=.*/PKG_HASH:=2e91ebb6947a96e9436fb2b3926a8802efe63a6d375dffec4f82aa9dbd6fd43b/' \
+            "$GO_MAKEFILE"
+          grep -q '^GO_DEFAULT_VERSION:=1.26$' feeds/packages/lang/golang/golang-values.mk
+          grep -q '^GO_VERSION_PATCH:=2$' "$GO_MAKEFILE"
+          grep -q '^PKG_HASH:=2e91ebb6947a96e9436fb2b3926a8802efe63a6d375dffec4f82aa9dbd6fd43b$' "$GO_MAKEFILE"
+          echo "Pinned OpenWrt golang feed to Go 1.26.2"
+
       - name: Add dae packages (from openwrt-dae)
         run: |
           git clone --depth=1 https://github.com/darkworon/openwrt-dae.git /tmp/openwrt-dae
-          git clone --depth=1 https://github.com/darkworon/openwrt-mt6000-luci-app-dae.git /tmp/luci-app-dae
           /tmp/openwrt-dae/scripts/install-package.sh openwrt
-          mkdir -p openwrt/package/custom/luci-app-dae
-          rsync -a --delete /tmp/luci-app-dae/luci-app-dae/ openwrt/package/custom/luci-app-dae/
           echo "dae package installed from openwrt-dae"
           ls openwrt/package/custom/dae/
+
+      - name: Fix dae BPF toolchain selection
+        run: |
+          cd openwrt
+          python3 <<'PY'
+          from pathlib import Path
+
+          makefile = Path("package/custom/dae/Makefile")
+          text = makefile.read_text()
+          old = """  DEPENDS:=$(GO_ARCH_DEPENDS) $(BPF_DEPENDS) \\
+            +ca-bundle +kmod-sched-core +kmod-sched-bpf +kmod-xdp-sockets-diag \\
+            +kmod-veth
+          endef
+          """
+          new = """  DEPENDS:=$(GO_ARCH_DEPENDS) @HAS_BPF_TOOLCHAIN \\
+            +ca-bundle +kmod-sched-core +kmod-sched-bpf +kmod-xdp-sockets-diag \\
+            +kmod-veth
+          endef
+
+          define Package/dae/config
+            config DAE_NEED_BPF_TOOLCHAIN
+              bool
+              depends on PACKAGE_dae
+              select NEED_BPF_TOOLCHAIN
+              default y
+          endef
+          """
+          if old not in text:
+              raise SystemExit("expected dae dependency block not found")
+          makefile.write_text(text.replace(old, new, 1))
+          PY
+          grep -q '@HAS_BPF_TOOLCHAIN' package/custom/dae/Makefile
+          grep -q 'select NEED_BPF_TOOLCHAIN' package/custom/dae/Makefile
 
       - name: Verify dae Hysteria2 outbound
         run: |
@@ -192,7 +260,7 @@ jobs:
         run: |
           cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
           echo "=== Requested package config ==="
-          grep -E '^CONFIG_PACKAGE_(dae|luci-app-dae|adguardhome|zerotier|kmod-sched|kmod-tcp-bbr)=' \
+          grep -E '^CONFIG_PACKAGE_(dae|adguardhome|zerotier|kmod-sched|kmod-sched-core|kmod-sched-bpf|kmod-tcp-bbr)=' \
             openwrt/.config
 
       - name: Expand config
@@ -207,10 +275,11 @@ jobs:
           missing=0
           for symbol in \
             CONFIG_PACKAGE_dae \
-            CONFIG_PACKAGE_luci-app-dae \
             CONFIG_PACKAGE_adguardhome \
             CONFIG_PACKAGE_zerotier \
             CONFIG_PACKAGE_kmod-sched \
+            CONFIG_PACKAGE_kmod-sched-core \
+            CONFIG_PACKAGE_kmod-sched-bpf \
             CONFIG_PACKAGE_kmod-tcp-bbr; do
             if grep -qx "$symbol=y" .config; then
               echo "OK: $symbol=y"
@@ -225,12 +294,46 @@ jobs:
         run: |
           cd openwrt
           echo "=== DAE kernel params check ==="
-          for param in CONFIG_CGROUPS CONFIG_KPROBES CONFIG_DEBUG_INFO_BTF \
-                       CONFIG_BPF_STREAM_PARSER CONFIG_NETKIT CONFIG_NET_SCH_INGRESS \
-                       CONFIG_NET_CLS_BPF CONFIG_NET_CLS_ACT CONFIG_BPF_EVENTS; do
-            val=$(grep "^$param" .config 2>/dev/null || echo "NOT SET")
-            echo "  $param = $val"
+          missing=0
+
+          echo "=== OpenWrt .config symbols ==="
+          for required in \
+            CONFIG_KERNEL_CGROUPS=y \
+            CONFIG_KERNEL_CGROUP_BPF=y \
+            CONFIG_KERNEL_KPROBES=y \
+            CONFIG_KERNEL_KPROBE_EVENTS=y \
+            CONFIG_KERNEL_BPF_EVENTS=y \
+            CONFIG_KERNEL_DEBUG_INFO=y \
+            CONFIG_KERNEL_DEBUG_INFO_BTF=y; do
+            if grep -qx "$required" .config; then
+              echo "OK: $required"
+            else
+              echo "FAIL: $required missing from OpenWrt .config"
+              missing=1
+            fi
           done
+          if grep -qx '# CONFIG_KERNEL_DEBUG_INFO_REDUCED is not set' .config; then
+            echo "OK: CONFIG_KERNEL_DEBUG_INFO_REDUCED is disabled"
+          else
+            echo "FAIL: CONFIG_KERNEL_DEBUG_INFO_REDUCED is not disabled in OpenWrt .config"
+            missing=1
+          fi
+
+          echo "=== Target kernel config symbols ==="
+          KERNEL_CONFIG="$(ls target/linux/mediatek/filogic/config-* 2>/dev/null | sort -V | tail -n1)"
+          for required in \
+            CONFIG_NET_INGRESS=y \
+            CONFIG_NET_EGRESS=y \
+            CONFIG_BPF_STREAM_PARSER=y \
+            CONFIG_NETKIT=y; do
+            if grep -qx "$required" "$KERNEL_CONFIG"; then
+              echo "OK: $required"
+            else
+              echo "FAIL: $required missing from $KERNEL_CONFIG"
+              missing=1
+            fi
+          done
+          exit "$missing"
 
       - name: Build tools & toolchain
         run: |
@@ -341,7 +444,7 @@ jobs:
             exit 1
           fi
           missing=0
-          for pkg in dae luci-app-dae adguardhome zerotier kmod-sched kmod-tcp-bbr; do
+          for pkg in dae adguardhome zerotier kmod-sched kmod-sched-core kmod-sched-bpf kmod-tcp-bbr; do
               if grep -Eq "^${pkg} - " "$MANIFEST"; then
                 echo "OK: $pkg present in manifest"
               else
