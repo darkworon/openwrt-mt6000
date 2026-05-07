@@ -386,6 +386,18 @@ jobs:
           fi
           [ "$status" -eq 0 ] || exit $status
 
+          echo "=== dae verbose prebuild ==="
+          make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/custom/dae/clean > /tmp/dae-clean.log 2>&1
+          make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/custom/dae/compile 2>&1 | tee /tmp/dae-debug.log
+          dae_status=${PIPESTATUS[0]}
+          if [ "$dae_status" -ne 0 ]; then
+            echo "=== dae filtered errors ==="
+            grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:|undefined:|cannot use|go: " /tmp/dae-debug.log | \
+              grep -v "^#\|//\| \* " | tail -160 || true
+            echo "=== dae verbose result: $dae_status ==="
+          fi
+          [ "$dae_status" -eq 0 ] || exit "$dae_status"
+
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/compile > /tmp/package-compile.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
@@ -404,6 +416,16 @@ jobs:
               grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:" /tmp/mt76-debug.log | \
                 grep -v "^#\|//\| \* " | tail -120 || true
               echo "=== mt76 verbose result: $mt76_status ==="
+            fi
+            if grep -q "package/custom/dae failed to build" /tmp/package-compile.log; then
+              echo "=== dae verbose rebuild for diagnostics ==="
+              make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/custom/dae/clean > /tmp/dae-clean.log 2>&1
+              make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/custom/dae/compile 2>&1 | tee /tmp/dae-debug.log
+              dae_status=${PIPESTATUS[0]}
+              echo "=== dae filtered errors ==="
+              grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:|undefined:|cannot use|go: " /tmp/dae-debug.log | \
+                grep -v "^#\|//\| \* " | tail -160 || true
+              echo "=== dae verbose result: $dae_status ==="
             fi
           else
             tail -20 /tmp/package-compile.log
