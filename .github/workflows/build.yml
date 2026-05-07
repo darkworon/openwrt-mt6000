@@ -7,6 +7,7 @@ on:
       - 'patches/**'
       - 'config/**'
       - 'files/**'
+      - '.github/workflows/build.yml'
   schedule:
     - cron: '0 5 * * 5'  # пятница 05:00 UTC (после track вс+ср)
   workflow_dispatch:
@@ -76,8 +77,10 @@ jobs:
           path: |
             openwrt/staging_dir/host
             openwrt/staging_dir/hostpkg
+            openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
           key: tools-openwrt-${{ hashFiles('openwrt/tools/**') }}
           restore-keys: |
+            validate-toolchain-
             tools-openwrt-
 
       - name: Clone official OpenWrt (upstream)
@@ -357,7 +360,23 @@ jobs:
 
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 target/compile > /tmp/target-compile.log 2>&1
           status=$?
-          tail -20 /tmp/target-compile.log
+          if [ "$status" -ne 0 ]; then
+            echo "=== target/compile failed: last 120 lines ==="
+            tail -120 /tmp/target-compile.log
+            echo "=== target/compile filtered errors ==="
+            grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:" /tmp/target-compile.log | \
+              grep -v "^#\|//\| \* " | tail -120 || true
+            echo "=== target/linux verbose rebuild for diagnostics ==="
+            make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 target/linux/clean > /tmp/target-linux-clean.log 2>&1
+            make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 target/linux/compile 2>&1 | tee /tmp/target-linux-debug.log
+            linux_status=${PIPESTATUS[0]}
+            echo "=== target/linux filtered errors ==="
+            grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:" /tmp/target-linux-debug.log | \
+              grep -v "^#\|//\| \* " | tail -120 || true
+            echo "=== target/linux verbose result: $linux_status ==="
+          else
+            tail -20 /tmp/target-compile.log
+          fi
           [ "$status" -eq 0 ] || exit $status
 
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/compile > /tmp/package-compile.log 2>&1

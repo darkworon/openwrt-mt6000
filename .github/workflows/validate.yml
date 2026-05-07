@@ -7,6 +7,7 @@ on:
       - 'patches/**'
       - 'config/**'
       - 'files/package/kernel/mt76/**'
+      - '.github/workflows/validate.yml'
   workflow_dispatch:
 
 jobs:
@@ -94,7 +95,27 @@ jobs:
       - name: Compile kernel
         run: |
           cd openwrt
-          make -j$(nproc) target/compile
+          set +e
+          make -j$(nproc) target/compile > /tmp/target-compile.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "=== target/compile failed: last 120 lines ==="
+            tail -120 /tmp/target-compile.log
+            echo "=== target/compile filtered errors ==="
+            grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:" /tmp/target-compile.log | \
+              grep -v "^#\|//\| \* " | tail -120 || true
+            echo "=== target/linux verbose rebuild for diagnostics ==="
+            make -j1 V=s target/linux/clean > /tmp/target-linux-clean.log 2>&1
+            make -j1 V=s target/linux/compile 2>&1 | tee /tmp/target-linux-debug.log
+            linux_status=${PIPESTATUS[0]}
+            echo "=== target/linux filtered errors ==="
+            grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:" /tmp/target-linux-debug.log | \
+              grep -v "^#\|//\| \* " | tail -120 || true
+            echo "=== target/linux verbose result: $linux_status ==="
+          else
+            tail -20 /tmp/target-compile.log
+          fi
+          exit "$status"
 
       - name: Compile mt76 (validation target)
         run: |
