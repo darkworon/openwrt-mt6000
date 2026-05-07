@@ -71,7 +71,10 @@ GitHub Pages работает только на публичных репо (Fre
 
 **`mt6000.diffconfig`:**
 - Target: `mediatek/filogic`, device: `glinet_gl-mt6000`
-- Пакеты: `dae`, `adguardhome`, `zerotier`, `kmod-sched`, `kmod-sched-core`, `kmod-sched-bpf`, `kmod-tcp-bbr`
+- Пакеты: `dae`, `adguardhome`, `zerotier`, `kmod-sched`, `kmod-sched-core`,
+  `kmod-sched-bpf`, `kmod-xdp-sockets-diag`, `kmod-tcp-bbr`
+- DAE kernel toggles in OpenWrt `.config`: `CONFIG_KERNEL_CGROUPS`, `CONFIG_KERNEL_CGROUP_BPF`,
+  `CONFIG_KERNEL_XDP_SOCKETS`, `CONFIG_KERNEL_KPROBES`, `CONFIG_KERNEL_DEBUG_INFO_BTF`
 - Hysteria2/Hy2 включён внутри `dae`: custom package `dae` заменяет `github.com/daeuniverse/outbound`
   на `darkworon/outbound:stickyip-salamander`. Отдельный standalone package `hysteria` не нужен.
 

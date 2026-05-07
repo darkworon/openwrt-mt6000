@@ -283,6 +283,7 @@ jobs:
             CONFIG_PACKAGE_kmod-sched \
             CONFIG_PACKAGE_kmod-sched-core \
             CONFIG_PACKAGE_kmod-sched-bpf \
+            CONFIG_PACKAGE_kmod-xdp-sockets-diag \
             CONFIG_PACKAGE_kmod-tcp-bbr; do
             if grep -qx "$symbol=y" .config; then
               echo "OK: $symbol=y"
@@ -303,6 +304,7 @@ jobs:
           for required in \
             CONFIG_KERNEL_CGROUPS=y \
             CONFIG_KERNEL_CGROUP_BPF=y \
+            CONFIG_KERNEL_XDP_SOCKETS=y \
             CONFIG_KERNEL_KPROBES=y \
             CONFIG_KERNEL_KPROBE_EVENTS=y \
             CONFIG_KERNEL_BPF_EVENTS=y \
@@ -447,7 +449,7 @@ jobs:
             exit 1
           fi
           missing=0
-          for pkg in dae adguardhome zerotier kmod-sched kmod-sched-core kmod-sched-bpf kmod-tcp-bbr; do
+          for pkg in dae adguardhome zerotier kmod-sched kmod-sched-core kmod-sched-bpf kmod-xdp-sockets-diag kmod-tcp-bbr; do
               if grep -Eq "^${pkg} - " "$MANIFEST"; then
                 echo "OK: $pkg present in manifest"
               else
