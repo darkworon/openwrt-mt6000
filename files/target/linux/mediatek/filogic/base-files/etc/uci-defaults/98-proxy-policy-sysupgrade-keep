@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -eu
+
+KEEP_FILE="/etc/sysupgrade.conf"
+
+touch "$KEEP_FILE"
+
+for path in \
+	/etc/dae/ \
+	/root/dae-safe-reload.sh \
+	/root/proxy-policy-target-apply.sh \
+	/root/update.sh \
+	/var/lib/adguardhome/ \
+	/var/lib/zerotier-one/
+do
+	grep -Fxq "$path" "$KEEP_FILE" || echo "$path" >> "$KEEP_FILE"
+done
+
+exit 0
