@@ -7,6 +7,11 @@ CONFIG_TARGET_mediatek=y
 CONFIG_TARGET_mediatek_filogic=y
 CONFIG_TARGET_mediatek_filogic_DEVICE_glinet_gl-mt6000=y
 
+# APK / TLS baseline matches the previous personal build and avoids pulling
+# mbedTLS-only variants for tools that are expected to use OpenSSL.
+# CONFIG_PACKAGE_apk-mbedtls is not set
+CONFIG_PACKAGE_apk-openssl=y
+
 # DAE / eBPF kernel requirements
 CONFIG_BPF_TOOLCHAIN_BUILD_LLVM=y
 CONFIG_KERNEL_CGROUPS=y
@@ -21,11 +26,52 @@ CONFIG_KERNEL_DEBUG_INFO_BTF=y
 CONFIG_PACKAGE_kmod-sched=y
 CONFIG_PACKAGE_kmod-sched-core=y
 CONFIG_PACKAGE_kmod-sched-bpf=y
+CONFIG_PACKAGE_kmod-sched-act-vlan=y
+CONFIG_PACKAGE_kmod-sched-flower=y
 CONFIG_PACKAGE_kmod-tcp-bbr=y
+CONFIG_PACKAGE_kmod-nf-conntrack-netlink=y
+CONFIG_PACKAGE_kmod-nf-socket=y
+CONFIG_PACKAGE_kmod-nf-tproxy=y
+CONFIG_PACKAGE_kmod-nft-compat=y
+CONFIG_PACKAGE_kmod-nft-queue=y
+CONFIG_PACKAGE_kmod-nft-socket=y
+CONFIG_PACKAGE_kmod-nft-tproxy=y
 
 # pesa1234 optimizations (via patches/kernel/)
 CONFIG_RPS=y
 CONFIG_NET_MEDIATEK_SOC_WED=y
+
+# Web UI / management
+CONFIG_PACKAGE_luci=y
+CONFIG_PACKAGE_uhttpd=y
+CONFIG_PACKAGE_uhttpd-mod-ubus=y
+CONFIG_PACKAGE_rpcd=y
+CONFIG_PACKAGE_rpcd-mod-file=y
+CONFIG_PACKAGE_rpcd-mod-iwinfo=y
+CONFIG_PACKAGE_rpcd-mod-rpcsys=y
+CONFIG_PACKAGE_rpcd-mod-ucode=y
+CONFIG_PACKAGE_iwinfo=y
+
+# Networking baseline from the last known-good personal build
+# CONFIG_PACKAGE_dnsmasq is not set
+CONFIG_PACKAGE_dnsmasq-full=y
+CONFIG_PACKAGE_dnsmasq_full_auth=y
+CONFIG_PACKAGE_dnsmasq_full_conntrack=y
+CONFIG_PACKAGE_dnsmasq_full_dhcp=y
+CONFIG_PACKAGE_dnsmasq_full_dnssec=y
+CONFIG_PACKAGE_dnsmasq_full_nftset=y
+CONFIG_PACKAGE_dnsmasq_full_noid=y
+CONFIG_PACKAGE_dnsmasq_full_tftp=y
+# CONFIG_PACKAGE_ip-tiny is not set
+CONFIG_PACKAGE_ip-full=y
+CONFIG_PACKAGE_ethtool=y
+CONFIG_PACKAGE_blkid=y
+CONFIG_PACKAGE_bridger=y
+
+# Full hostapd/wpa stack. The preserved wireless config uses options rejected by
+# wpad-basic-mbedtls on current snapshots.
+# CONFIG_PACKAGE_wpad-basic-mbedtls is not set
+CONFIG_PACKAGE_wpad-openssl=y
 
 # DAE package
 CONFIG_PACKAGE_dae=y
