@@ -278,7 +278,7 @@ jobs:
         run: |
           cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
           echo "=== Requested package config ==="
-          grep -E '^CONFIG_PACKAGE_(dae|adguardhome|zerotier|luci|uhttpd|rpcd|wpad-openssl|dnsmasq-full|ip-full|iwinfo|bridger|kmod-sched|kmod-sched-core|kmod-sched-bpf|kmod-sched-act-vlan|kmod-sched-flower|kmod-nf-conntrack-netlink|kmod-nft-tproxy|kmod-tcp-bbr)=' \
+          grep -E '^CONFIG_PACKAGE_(dae|adguardhome|zerotier|luci|uhttpd|rpcd|wpad-openssl|dnsmasq-full|ip-full|iwinfo|bridger|curl|libcurl|libnghttp2|libnghttp3|libngtcp2|kmod-sched|kmod-sched-core|kmod-sched-bpf|kmod-sched-act-vlan|kmod-sched-flower|kmod-nf-conntrack-netlink|kmod-nft-tproxy|kmod-tcp-bbr)=' \
             openwrt/.config
 
       - name: Expand config
@@ -304,6 +304,14 @@ jobs:
             CONFIG_PACKAGE_ip-full \
             CONFIG_PACKAGE_iwinfo \
             CONFIG_PACKAGE_bridger \
+            CONFIG_PACKAGE_curl \
+            CONFIG_PACKAGE_libcurl \
+            CONFIG_PACKAGE_libnghttp2 \
+            CONFIG_PACKAGE_libnghttp3 \
+            CONFIG_PACKAGE_libngtcp2 \
+            CONFIG_LIBCURL_OPENSSL \
+            CONFIG_LIBCURL_HTTP2 \
+            CONFIG_LIBCURL_HTTP3 \
             CONFIG_PACKAGE_kmod-sched \
             CONFIG_PACKAGE_kmod-sched-core \
             CONFIG_PACKAGE_kmod-sched-bpf \
@@ -521,7 +529,7 @@ jobs:
             exit 1
           fi
           missing=0
-          for pkg in dae adguardhome zerotier luci uhttpd rpcd-mod-iwinfo rpcd-mod-rpcsys wpad-openssl dnsmasq-full ip-full iwinfo bridger kmod-sched kmod-sched-core kmod-sched-bpf kmod-sched-act-vlan kmod-sched-flower kmod-nf-conntrack-netlink kmod-nft-tproxy kmod-xdp-sockets-diag kmod-tcp-bbr; do
+          for pkg in dae adguardhome zerotier luci uhttpd rpcd-mod-iwinfo rpcd-mod-rpcsys wpad-openssl dnsmasq-full ip-full iwinfo bridger curl libcurl libnghttp2 libnghttp3 libngtcp2 kmod-sched kmod-sched-core kmod-sched-bpf kmod-sched-act-vlan kmod-sched-flower kmod-nf-conntrack-netlink kmod-nft-tproxy kmod-xdp-sockets-diag kmod-tcp-bbr; do
               if grep -Eq "^${pkg} - " "$MANIFEST"; then
                 echo "OK: $pkg present in manifest"
               else
