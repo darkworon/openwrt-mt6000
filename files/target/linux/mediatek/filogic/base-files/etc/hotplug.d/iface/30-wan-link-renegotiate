@@ -1,0 +1,52 @@
+#!/bin/sh
+
+[ "$INTERFACE" = "wan" ] || exit 0
+case "$ACTION" in
+	ifup|ifupdate) ;;
+	*) exit 0 ;;
+esac
+
+command -v ethtool >/dev/null 2>&1 || exit 0
+
+DEV="${DEVICE:-}"
+[ -n "$DEV" ] || DEV="$(uci -q get network.wan.device || uci -q get network.wan.ifname || echo eth1)"
+[ -d "/sys/class/net/$DEV" ] || exit 0
+
+LOCK="/tmp/wan-link-renegotiate.${DEV}.lock"
+[ -e "$LOCK" ] && exit 0
+touch "$LOCK" || exit 0
+trap 'rm -f "$LOCK"' EXIT
+
+get_speed_mbps() {
+	ethtool "$DEV" 2>/dev/null |
+		awk -F: '/Speed:/ { gsub(/^[ \t]+|[ \t]+$/, "", $2); sub(/Mb\/s$/, "", $2); print $2; exit }'
+}
+
+for attempt in 1 2 3 4; do
+	speed="$(get_speed_mbps)"
+
+	case "$speed" in
+		''|Unknown*) ;;
+		*[!0-9]*) ;;
+		*)
+			if [ "$speed" -ge 1000 ]; then
+				exit 0
+			fi
+
+			logger -t wan-link "wan device $DEV negotiated ${speed}Mb/s, requesting autoneg restart (attempt $attempt)"
+			ethtool -r "$DEV" >/dev/null 2>&1 || exit 0
+			;;
+	esac
+
+	sleep 5
+done
+
+speed="$(get_speed_mbps)"
+case "$speed" in
+	''|Unknown*) ;;
+	*)
+		if [ "$speed" -lt 1000 ] 2>/dev/null; then
+			logger -t wan-link "wan device $DEV still negotiated ${speed}Mb/s after autoneg retries"
+		fi
+		;;
+esac

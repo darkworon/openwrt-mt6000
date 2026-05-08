@@ -30,7 +30,9 @@ Fork of pesa1234/openwrt, branch `next-r4.8.2.rss.mtk`.
 - `999-9912` — WED: WED1 rx hang after SER
 - `999-9913` — WED: ring cleanup on module reinsertion
 - `999-9914` — WED: avoid double WDMA init
-- `999-9915` — improve non-DSA Tx queue selection
+
+### Quarantined
+- `999-9915` — non-DSA Tx queue selection; see `patches/kernel/EXCLUDED.md`
 
 ### Misc
 - `999-9999` — USB power control

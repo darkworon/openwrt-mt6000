@@ -71,10 +71,14 @@ jobs:
           NEW_PATCHES=""
           CHANGED_PATCHES=""
           REMOVED_PATCHES=""
+          EXCLUDED_FILE="$OUR_KERNEL/EXCLUDED.md"
 
           for f in $PESA_KERNEL/999-*.patch; do
             [ -f "$f" ] || continue
             name=$(basename "$f")
+            if [ -f "$EXCLUDED_FILE" ] && grep -Fq "$name" "$EXCLUDED_FILE"; then
+              continue
+            fi
             if [ ! -f "$OUR_KERNEL/$name" ]; then
               NEW_PATCHES="$NEW_PATCHES\n- ➕ NEW: \`$name\`"
             elif ! diff -q "$f" "$OUR_KERNEL/$name" > /dev/null 2>&1; then
@@ -255,7 +259,7 @@ jobs:
             body += `git clone --depth=1 --branch ${branch} https://github.com/pesa1234/openwrt.git /tmp/pesa1234\n`;
             body += `KERNEL_DIR=$(ls -d /tmp/pesa1234/target/linux/mediatek/patches-* | sort -V | tail -n1)\n`;
             body += `rm -f patches/kernel/*.patch patches/mt76/*.patch\n`;
-            body += `cp "$KERNEL_DIR"/999-*.patch patches/kernel/\n`;
+            body += `for f in "$KERNEL_DIR"/999-*.patch; do name=$(basename "$f"); grep -Fq "$name" patches/kernel/EXCLUDED.md && continue; cp "$f" patches/kernel/; done\n`;
             body += `for f in /tmp/pesa1234/package/kernel/mt76/patches/*.patch; do name=$(basename "$f"); grep -Fq "$name" patches/mt76/EXCLUDED.md && continue; cp "$f" patches/mt76/; done\n`;
             body += `sed -e 's#https://github.com/pesa1234/packages.git#https://github.com/darkworon/openwrt-mt6000-packages.git#' -e 's#https://github.com/pesa1234/luci.git#https://github.com/darkworon/openwrt-mt6000-luci.git#' /tmp/pesa1234/feeds.conf.default > config/feeds.conf.default\n`;
             body += `cp /tmp/pesa1234/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup files/target/linux/mediatek/filogic/base-files/etc/init.d/advanced_setup\n`;

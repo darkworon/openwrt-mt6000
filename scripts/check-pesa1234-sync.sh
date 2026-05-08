@@ -76,6 +76,11 @@ compare_file() {
   fi
 }
 
+kernel_patch_excluded() {
+  local name="$1"
+  [ -f patches/kernel/EXCLUDED.md ] && grep -Fq -- "$name" patches/kernel/EXCLUDED.md
+}
+
 cd "$ROOT"
 
 latest_branch="$(latest_pesa_branch)"
@@ -100,8 +105,16 @@ if [ -n "$latest_branch" ]; then
 
   kernel_dir="$(find "$tmp_root/pesa-openwrt/target/linux/mediatek" -maxdepth 1 -type d -name 'patches-*' | sort -V | tail -n1)"
   mkdir -p "$tmp_root/pesa-kernel" "$tmp_root/our-kernel" "$tmp_root/pesa-mt76" "$tmp_root/our-mt76"
-  cp "$kernel_dir"/999-*.patch "$tmp_root/pesa-kernel/"
+  for patch in "$kernel_dir"/999-*.patch; do
+    name="$(basename "$patch")"
+    if kernel_patch_excluded "$name"; then
+      echo "OK: kernel patch excluded by policy: $name"
+      continue
+    fi
+    cp "$patch" "$tmp_root/pesa-kernel/"
+  done
   cp patches/kernel/*.patch "$tmp_root/our-kernel/"
+  rm -f "$tmp_root/our-kernel/EXCLUDED.md"
 
   for patch in "$tmp_root/pesa-openwrt"/package/kernel/mt76/patches/*.patch; do
     name="$(basename "$patch")"

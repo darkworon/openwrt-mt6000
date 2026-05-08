@@ -34,10 +34,12 @@
 | `999-9912-net-ethernet-mtk_wed-fix-wed1-rx-hang-after-ser.patch` | WED1 RX hang after SER fix |
 | `999-9913-net-ethernet-mtk_wed-fix-ring-cleanup-on-module-reinsert.patch` | Ring cleanup при реинсерции модуля |
 | `999-9914-net-ethernet-mtk_wed-avoid-wdma-double-init.patch` | Защита от двойной WDMA init |
-| `999-9915-net-ethernet-mtk_eth_soc-improve-non-dsa-tx-queue-selection.patch` | Non-DSA TX queue selection |
+| `999-9915-net-ethernet-mtk_eth_soc-improve-non-dsa-tx-queue-selection.patch` | Quarantined; see `patches/kernel/EXCLUDED.md` |
 | `999-9999-usb-power-control.patch` | USB power control |
 
 ## mt76
+
+`patches/kernel/EXCLUDED.md` содержит kernel-патчи pesa1234, которые отслеживаются, но временно не применяются.
 
 `patches/mt76/` содержит 93 применяемых патча из `pesa1234/openwrt/package/kernel/mt76/patches/`.
 Патч `0018-*set_qos_map*` исключен через `patches/mt76/EXCLUDED.md`; вместо него `patches/mt76-local/0018-compat-*` оставляет только enum, который нужен последующим upstream-патчам как контекст.

@@ -41,7 +41,7 @@ GitHub Pages работает только на публичных репо (Fre
 | Группа | Патчи | Эффект |
 |--------|-------|--------|
 | RSS (Receive Side Scaling) | 999-2701..2728, 999-9901..9910 | +30-40% ethernet throughput, 4 Rx rings |
-| WED bugfixes | 999-9911..9915 | Hardware WiFi offload стабильность |
+| WED bugfixes | 999-9911..9914 | Hardware WiFi offload стабильность |
 | NAPI/misc | 999-9907..9910 | Jumbo frames, NAPI poll weight, buffer tuning |
 | USB | 999-9999 | USB power control |
 
@@ -157,7 +157,7 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 1. Найти последнюю ветку next-r4.*.rss.mtk у pesa1234 (динамически)
 2. Сравнить с .pesa1234-branch (что мы отслеживаем сейчас)
 3. Клонировать pesa1234/openwrt (актуальная ветка)
-4. Сравнить patches/kernel/ с pesa1234 999-* патчами
+4. Сравнить patches/kernel/ с pesa1234 999-* патчами, учитывая `patches/kernel/EXCLUDED.md`
 5. Сравнить patches/mt76/ с pesa1234/openwrt package/kernel/mt76/patches/
 6. Сравнить feeds.conf.default
 7. Если есть delta → создать GitHub Issue с описанием и командами для обновления
