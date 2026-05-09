@@ -469,7 +469,22 @@ jobs:
 
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/install > /tmp/package-install.log 2>&1
           status=$?
-          tail -20 /tmp/package-install.log
+          if [ "$status" -ne 0 ]; then
+            echo "=== package/install failed: last 200 lines ==="
+            tail -200 /tmp/package-install.log
+            echo "=== package/install filtered errors ==="
+            grep -E "ERROR:|Error [0-9]+|failed|unsatisf|satisfy|conflict|breaks:|not found|missing depend|Cannot install|unable to select|world" \
+              /tmp/package-install.log | tail -200 || true
+            echo "=== package/install verbose rerun for diagnostics ==="
+            make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/install 2>&1 | tee /tmp/package-install-debug.log
+            install_status=${PIPESTATUS[0]}
+            echo "=== package/install verbose filtered errors ==="
+            grep -E "ERROR:|Error [0-9]+|failed|unsatisf|satisfy|conflict|breaks:|not found|missing depend|Cannot install|unable to select|world" \
+              /tmp/package-install-debug.log | tail -200 || true
+            echo "=== package/install verbose result: $install_status ==="
+          else
+            tail -20 /tmp/package-install.log
+          fi
           [ "$status" -eq 0 ] || exit $status
 
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/index > /tmp/package-index.log 2>&1
