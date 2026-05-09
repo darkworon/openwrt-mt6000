@@ -80,8 +80,8 @@ GitHub Pages работает только на публичных репо (Fre
   `kmod-sched`, `kmod-sched-core`, `kmod-sched-bpf`, `kmod-sched-act-vlan`,
   `kmod-sched-flower`, `kmod-nf-conntrack-netlink`, `kmod-nft-tproxy`,
   `kmod-xdp-sockets-diag`, `kmod-tcp-bbr`, `kmod-tun`, `kmod-veth`,
-  legacy iptables compatibility kmods, USB storage/filesystem/NLS kmods from the
-  last known-good personal build
+  `kmod-ikconfig`, legacy iptables compatibility kmods, USB
+  storage/filesystem/NLS kmods from the last known-good personal build
 - DAE kernel toggles in OpenWrt `.config`: `CONFIG_KERNEL_CGROUPS`, `CONFIG_KERNEL_CGROUP_BPF`,
   `CONFIG_KERNEL_XDP_SOCKETS`, `CONFIG_KERNEL_KPROBES`, `CONFIG_KERNEL_DEBUG_INFO_BTF`
 - Hysteria2/Hy2 включён внутри `dae`: custom package `dae` заменяет `github.com/daeuniverse/outbound`

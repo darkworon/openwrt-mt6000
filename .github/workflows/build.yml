@@ -338,6 +338,7 @@ jobs:
             CONFIG_PACKAGE_kmod-asn1-decoder \
             CONFIG_PACKAGE_kmod-oid-registry \
             CONFIG_PACKAGE_kmod-lib-crc16 \
+            CONFIG_PACKAGE_kmod-ikconfig \
             CONFIG_PACKAGE_kmod-scsi-core \
             CONFIG_PACKAGE_kmod-usb-storage \
             CONFIG_PACKAGE_kmod-usb-storage-extras \
@@ -348,6 +349,7 @@ jobs:
             CONFIG_PACKAGE_kmod-fs-ksmbd \
             CONFIG_PACKAGE_kmod-fs-netfs \
             CONFIG_PACKAGE_kmod-fs-ntfs3 \
+            CONFIG_PACKAGE_kmod-fs-smbfs-common \
             CONFIG_PACKAGE_kmod-fs-vfat \
             CONFIG_PACKAGE_kmod-nls-cp437 \
             CONFIG_PACKAGE_kmod-nls-iso8859-1 \
@@ -577,7 +579,7 @@ jobs:
             exit 1
           fi
           missing=0
-          for pkg in dae adguardhome zerotier luci luci-app-advanced uhttpd rpcd-mod-iwinfo rpcd-mod-rpcsys wpad-openssl dnsmasq-full ip-full iwinfo bridger curl libcurl4 libnghttp2-14 libnghttp3 libngtcp2 kmod-sched kmod-sched-core kmod-sched-bpf kmod-sched-act-vlan kmod-sched-flower kmod-nf-conntrack-netlink kmod-nft-tproxy kmod-xdp-sockets-diag kmod-tcp-bbr kmod-veth kmod-tun kmod-netlink-diag kmod-br-netfilter kmod-nfnetlink-queue kmod-ipt-core kmod-ipt-extra kmod-ipt-ipopt kmod-ipt-offload kmod-nf-ipt kmod-nf-ipt6 kmod-crypto-crc32 kmod-crypto-ecb kmod-cryptodev kmod-asn1-decoder kmod-oid-registry kmod-lib-crc16 kmod-scsi-core kmod-usb-storage kmod-usb-storage-extras kmod-usb-storage-uas kmod-fs-exfat kmod-fs-ext4 kmod-fs-f2fs kmod-fs-ksmbd kmod-fs-netfs kmod-fs-ntfs3 kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1 kmod-nls-ucs2-utils kmod-nls-utf8; do
+          for pkg in dae adguardhome zerotier luci luci-app-advanced uhttpd rpcd-mod-iwinfo rpcd-mod-rpcsys wpad-openssl dnsmasq-full ip-full iwinfo bridger curl libcurl4 libnghttp2-14 libnghttp3 libngtcp2 kmod-sched kmod-sched-core kmod-sched-bpf kmod-sched-act-vlan kmod-sched-flower kmod-nf-conntrack-netlink kmod-nft-tproxy kmod-xdp-sockets-diag kmod-tcp-bbr kmod-veth kmod-tun kmod-netlink-diag kmod-br-netfilter kmod-nfnetlink-queue kmod-ipt-core kmod-ipt-extra kmod-ipt-ipopt kmod-ipt-offload kmod-nf-ipt kmod-nf-ipt6 kmod-crypto-crc32 kmod-crypto-ecb kmod-cryptodev kmod-asn1-decoder kmod-oid-registry kmod-lib-crc16 kmod-ikconfig kmod-scsi-core kmod-usb-storage kmod-usb-storage-extras kmod-usb-storage-uas kmod-fs-exfat kmod-fs-ext4 kmod-fs-f2fs kmod-fs-ksmbd kmod-fs-netfs kmod-fs-ntfs3 kmod-fs-smbfs-common kmod-fs-vfat kmod-nls-cp437 kmod-nls-iso8859-1 kmod-nls-ucs2-utils kmod-nls-utf8; do
               if grep -Eq "^${pkg} - " "$MANIFEST"; then
                 echo "OK: $pkg present in manifest"
               else
