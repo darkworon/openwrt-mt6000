@@ -25,7 +25,26 @@ jobs:
             build-essential clang flex bison g++ gawk gcc-multilib \
             g++-multilib gettext git libncurses-dev libssl-dev \
             python3-setuptools rsync swig unzip zlib1g-dev \
-            file wget curl libelf-dev dwarves
+            file wget curl libelf-dev dwarves ccache
+
+      - name: Restore ccache
+        id: cache-ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.ccache
+          key: ccache-mt6000-v2-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-mt6000-v2-${{ runner.os }}-
+            ccache-mt6000-
+
+      - name: Configure ccache
+        run: |
+          mkdir -p ~/.ccache
+          echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE/openwrt" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
+          CCACHE_DIR="$HOME/.ccache" ccache -M 5G
+          CCACHE_DIR="$HOME/.ccache" ccache -z || true
 
       - name: Clone OpenWrt
         run: |
@@ -38,9 +57,19 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: openwrt/dl
-          key: openwrt-dl-v1-${{ hashFiles('mt6000-overlay/config/feeds.conf.default', 'mt6000-overlay/config/mt6000.diffconfig') }}
+          key: openwrt-dl-v2-${{ runner.os }}-${{ hashFiles('mt6000-overlay/config/feeds.conf.default') }}
           restore-keys: |
+            openwrt-dl-v2-${{ runner.os }}-
             openwrt-dl-v1-
+
+      - name: Restore OpenWrt feeds
+        id: cache-openwrt-feeds
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/feeds
+          key: openwrt-feeds-v1-${{ runner.os }}-${{ hashFiles('mt6000-overlay/config/feeds.conf.default') }}
+          restore-keys: |
+            openwrt-feeds-v1-${{ runner.os }}-
 
       - name: Restore toolchain
         id: cache-openwrt-toolchain
@@ -57,6 +86,14 @@ jobs:
             openwrt-toolchain-
             validate-toolchain-
             tools-openwrt-
+
+      - name: Report restored cache state
+        run: |
+          echo "ccache exact hit: ${{ steps.cache-ccache.outputs.cache-hit }}"
+          echo "OpenWrt dl exact hit: ${{ steps.cache-openwrt-dl.outputs.cache-hit }}"
+          echo "OpenWrt feeds exact hit: ${{ steps.cache-openwrt-feeds.outputs.cache-hit }}"
+          echo "OpenWrt toolchain exact hit: ${{ steps.cache-openwrt-toolchain.outputs.cache-hit }}"
+          du -sh openwrt/dl openwrt/feeds openwrt/staging_dir/host openwrt/staging_dir/hostpkg openwrt/staging_dir/toolchain-* 2>/dev/null || true
 
       - name: Apply mt76 overlay (Makefile pin)
         run: |
@@ -102,6 +139,14 @@ jobs:
       - name: Copy diffconfig
         run: |
           cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
+          echo "CONFIG_DEVEL=y" >> openwrt/.config
+          echo "CONFIG_CCACHE=y" >> openwrt/.config
+          mkdir -p openwrt/staging_dir/host/etc
+          {
+            echo "compiler_type=gcc"
+            echo "compiler_check=content"
+            echo "base_dir=$GITHUB_WORKSPACE/openwrt"
+          } > openwrt/staging_dir/host/etc/ccache.conf
           cp mt6000-overlay/config/feeds.conf.default openwrt/feeds.conf.default
 
       - name: Update feeds
@@ -114,13 +159,16 @@ jobs:
         run: |
           cd openwrt
           make defconfig
-          make -j$(nproc) tools/install toolchain/install
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 tools/install toolchain/install
+          echo "=== cache/build dir sizes after toolchain ==="
+          du -sh staging_dir/host staging_dir/hostpkg staging_dir/toolchain-* 2>/dev/null || true
+          ccache -s || true
 
       - name: Compile kernel
         run: |
           cd openwrt
           set +e
-          make -j$(nproc) target/compile > /tmp/target-compile.log 2>&1
+          make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 target/compile > /tmp/target-compile.log 2>&1
           status=$?
           if [ "$status" -ne 0 ]; then
             echo "=== target/compile failed: last 120 lines ==="
@@ -129,8 +177,8 @@ jobs:
             grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:" /tmp/target-compile.log | \
               grep -v "^#\|//\| \* " | tail -120 || true
             echo "=== target/linux verbose rebuild for diagnostics ==="
-            make -j1 V=s target/linux/clean > /tmp/target-linux-clean.log 2>&1
-            make -j1 V=s target/linux/compile 2>&1 | tee /tmp/target-linux-debug.log
+            make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 target/linux/clean > /tmp/target-linux-clean.log 2>&1
+            make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 target/linux/compile 2>&1 | tee /tmp/target-linux-debug.log
             linux_status=${PIPESTATUS[0]}
             echo "=== target/linux filtered errors ==="
             grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:" /tmp/target-linux-debug.log | \
@@ -146,12 +194,21 @@ jobs:
           set +e
           cd openwrt
           echo "=== Compiling mt76 ==="
-          make -j$(nproc) V=s package/kernel/mt76/compile 2>&1 | tee /tmp/mt76-compile.log
+          make -j$(nproc) V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/kernel/mt76/compile 2>&1 | tee /tmp/mt76-compile.log
           status=${PIPESTATUS[0]}
           grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build" /tmp/mt76-compile.log | \
             grep -v "^#\|//\| \* " | tail -80 || true
           echo "=== mt76 compile result: $status ==="
+          ccache -s || true
           exit $status
+
+      - name: Save ccache
+        if: always() && steps.cache-ccache.outputs.cache-primary-key != '' && steps.cache-ccache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ${{ steps.cache-ccache.outputs.cache-primary-key }}
 
       - name: Save OpenWrt downloads
         if: always() && steps.cache-openwrt-dl.outputs.cache-primary-key != '' && steps.cache-openwrt-dl.outputs.cache-hit != 'true'
@@ -160,6 +217,14 @@ jobs:
         with:
           path: openwrt/dl
           key: ${{ steps.cache-openwrt-dl.outputs.cache-primary-key }}
+
+      - name: Save OpenWrt feeds
+        if: always() && steps.cache-openwrt-feeds.outputs.cache-primary-key != '' && steps.cache-openwrt-feeds.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/feeds
+          key: ${{ steps.cache-openwrt-feeds.outputs.cache-primary-key }}
 
       - name: Save toolchain
         if: always() && steps.cache-openwrt-toolchain.outputs.cache-primary-key != '' && steps.cache-openwrt-toolchain.outputs.cache-hit != 'true'

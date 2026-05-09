@@ -138,7 +138,7 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 | `validate.yml` | Ручной запуск | Тяжелая валидация патчей/kernel/mt76 без автоматического дубля full build |
 | `track-pesa1234.yml` | Вс + Ср 04:00 UTC, ручной | Проверяет обновления у pesa1234, создаёт Issue (пропускает EXCLUDED.md), старый запуск отменяется через concurrency |
 | `sync-forks.yml` | Пт 03:00 UTC, ручной | Синхронизирует форки feeds/luci/mt76/openwrt с upstream pesa1234, старый запуск отменяется через concurrency |
-| `build.yml` | Пт 05:00 UTC, push в patches/config/files/scripts, ручной | Единственный automatic push build: полная сборка и публикация, включая custom `dae`; старый build на той же ветке отменяется |
+| `build.yml` | Пт 05:00 UTC, push в patches/config/files/scripts, ручной | Единственный automatic push build: полная сборка и публикация, включая custom `dae`; workflow-only changes не публикуют новую прошивку автоматически |
 
 ### Как работает сборка (build.yml)
 
@@ -153,7 +153,7 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 8. Подключить darkworon/openwrt-dae как custom package `dae`
 9. Проверить, что custom `dae` собирается с `hysteria2`/`hy2` outbound и Salamander
 10. make defconfig + проверка DAE параметров и критичных пакетов
-11. make tools + toolchain + target + packages + image. Toolchain cache intentionally ignores `diffconfig`, so package/kmod changes do not invalidate the expensive host/toolchain cache. `openwrt/dl` is cached separately, and the slow serial `dae` clean/rebuild is only enabled with `debug_rebuild=true`.
+11. make tools + toolchain + target + packages + image. Toolchain cache intentionally ignores `diffconfig`, so package/kmod changes do not invalidate the expensive host/toolchain cache. `openwrt/dl` is cached by feed config, `openwrt/feeds` is cached separately, ccache is enabled with OpenWrt `CONFIG_CCACHE`, and the slow serial `dae` clean/rebuild is only enabled with `debug_rebuild=true`.
 12. Smoke test: firmware > 10MB, dae + adguardhome + zerotier + luci-app-advanced + curl HTTP/3 + pacing/BBR kmods в manifest
 13. Публикация Release в openwrt-mt6000-releases (прошивка + пакеты)
 14. Обновление APK index.json на GitHub Pages

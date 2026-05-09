@@ -20,8 +20,6 @@ jobs:
     steps:
       - name: Checkout this repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Find latest pesa1234 branch
         id: pesa_branch

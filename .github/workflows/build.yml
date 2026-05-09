@@ -8,7 +8,6 @@ on:
       - 'config/**'
       - 'files/**'
       - 'scripts/**'
-      - '.github/workflows/build.yml'
   schedule:
     - cron: '0 5 * * 5'  # пятница 05:00 UTC (после track вс+ср)
   workflow_dispatch:
@@ -86,7 +85,10 @@ jobs:
       - name: Configure ccache
         run: |
           mkdir -p ~/.ccache
-          CCACHE_DIR="$HOME/.ccache" ccache -M 2G
+          echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE/openwrt" >> "$GITHUB_ENV"
+          echo "CCACHE_COMPILERCHECK=content" >> "$GITHUB_ENV"
+          CCACHE_DIR="$HOME/.ccache" ccache -M 5G
           CCACHE_DIR="$HOME/.ccache" ccache -z || true
 
       - name: Clone official OpenWrt (upstream)
@@ -102,9 +104,19 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: openwrt/dl
-          key: openwrt-dl-v1-${{ hashFiles('mt6000-overlay/config/feeds.conf.default', 'mt6000-overlay/config/mt6000.diffconfig') }}
+          key: openwrt-dl-v2-${{ runner.os }}-${{ hashFiles('mt6000-overlay/config/feeds.conf.default') }}
           restore-keys: |
+            openwrt-dl-v2-${{ runner.os }}-
             openwrt-dl-v1-
+
+      - name: Restore OpenWrt feeds
+        id: cache-openwrt-feeds
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/feeds
+          key: openwrt-feeds-v1-${{ runner.os }}-${{ hashFiles('mt6000-overlay/config/feeds.conf.default') }}
+          restore-keys: |
+            openwrt-feeds-v1-${{ runner.os }}-
 
       - name: Restore OpenWrt tools/toolchain
         id: cache-openwrt-toolchain
@@ -121,6 +133,14 @@ jobs:
             openwrt-toolchain-
             validate-toolchain-
             tools-openwrt-
+
+      - name: Report restored cache state
+        run: |
+          echo "ccache exact hit: ${{ steps.cache-ccache.outputs.cache-hit }}"
+          echo "OpenWrt dl exact hit: ${{ steps.cache-openwrt-dl.outputs.cache-hit }}"
+          echo "OpenWrt feeds exact hit: ${{ steps.cache-openwrt-feeds.outputs.cache-hit }}"
+          echo "OpenWrt toolchain exact hit: ${{ steps.cache-openwrt-toolchain.outputs.cache-hit }}"
+          du -sh openwrt/dl openwrt/feeds openwrt/staging_dir/host openwrt/staging_dir/hostpkg openwrt/staging_dir/toolchain-* 2>/dev/null || true
 
       - name: Apply kernel patches (pesa1234 series)
         run: |
@@ -190,10 +210,17 @@ jobs:
         run: |
           DAE_SOURCE_URL="${DAE_SOURCE_URL:-https://github.com/daeuniverse/dae.git}"
           DAE_SOURCE_REF="${DAE_SOURCE_REF:-main}"
-          DAE_SOURCE_VERSION="$(git ls-remote "$DAE_SOURCE_URL" "refs/heads/$DAE_SOURCE_REF" | awk '{print $1}')"
-          if [ -z "$DAE_SOURCE_VERSION" ]; then
-            DAE_SOURCE_VERSION="$(git ls-remote "$DAE_SOURCE_URL" "$DAE_SOURCE_REF" | awk 'NR == 1 {print $1}')"
+          REQUESTED_DAE_SOURCE_VERSION="${DAE_SOURCE_VERSION:-latest}"
+
+          if [ "$REQUESTED_DAE_SOURCE_VERSION" = "latest" ] || [ -z "$REQUESTED_DAE_SOURCE_VERSION" ]; then
+            DAE_SOURCE_VERSION="$(git ls-remote "$DAE_SOURCE_URL" "refs/heads/$DAE_SOURCE_REF" | awk '{print $1}')"
+            if [ -z "$DAE_SOURCE_VERSION" ]; then
+              DAE_SOURCE_VERSION="$(git ls-remote "$DAE_SOURCE_URL" "$DAE_SOURCE_REF" | awk 'NR == 1 {print $1}')"
+            fi
+          else
+            DAE_SOURCE_VERSION="$REQUESTED_DAE_SOURCE_VERSION"
           fi
+
           if [ -z "$DAE_SOURCE_VERSION" ]; then
             echo "Cannot resolve DAE_SOURCE_REF=$DAE_SOURCE_REF from $DAE_SOURCE_URL"
             exit 1
@@ -294,8 +321,11 @@ jobs:
             openwrt/package/custom/dae/Makefile
 
           rm -rf /tmp/dae-outbound-check
-          git clone "$DAE_OUTBOUND_REPO" /tmp/dae-outbound-check
-          git -C /tmp/dae-outbound-check checkout "$DAE_OUTBOUND_REF"
+          if ! git clone --depth=1 --branch "$DAE_OUTBOUND_REF" "$DAE_OUTBOUND_REPO" /tmp/dae-outbound-check; then
+            git clone --depth=1 "$DAE_OUTBOUND_REPO" /tmp/dae-outbound-check
+            git -C /tmp/dae-outbound-check fetch --depth=1 origin "$DAE_OUTBOUND_REF" || true
+            git -C /tmp/dae-outbound-check checkout "$DAE_OUTBOUND_REF"
+          fi
 
           grep -q 'FromLinkRegister("hysteria2"' \
             /tmp/dae-outbound-check/dialer/hysteria2/hysteria2.go
@@ -308,6 +338,14 @@ jobs:
       - name: Copy diffconfig
         run: |
           cp mt6000-overlay/config/mt6000.diffconfig openwrt/.config
+          echo "CONFIG_DEVEL=y" >> openwrt/.config
+          echo "CONFIG_CCACHE=y" >> openwrt/.config
+          mkdir -p openwrt/staging_dir/host/etc
+          {
+            echo "compiler_type=gcc"
+            echo "compiler_check=content"
+            echo "base_dir=$GITHUB_WORKSPACE/openwrt"
+          } > openwrt/staging_dir/host/etc/ccache.conf
           echo "=== Requested package config ==="
           grep -E '^CONFIG_PACKAGE_(dae|adguardhome|zerotier|luci|luci-app-advanced|uhttpd|rpcd|wpad-openssl|dnsmasq-full|ip-full|iwinfo|bridger|curl|libcurl|libnghttp2|libnghttp3|libngtcp2|kmod-[^=]+)=' \
             openwrt/.config
@@ -456,6 +494,9 @@ jobs:
             tools/install toolchain/install > /tmp/toolchain.log 2>&1
           status=$?
           grep -E "^(make\[|ERROR|WARNING)" /tmp/toolchain.log | tail -20 || true
+          echo "=== cache/build dir sizes after toolchain ==="
+          du -sh staging_dir/host staging_dir/hostpkg staging_dir/toolchain-* 2>/dev/null || true
+          ccache -s || true
           exit $status
 
       - name: Build target + packages
@@ -559,6 +600,8 @@ jobs:
           tail -20 /tmp/package-index.log
           [ "$status" -eq 0 ] || exit $status
 
+          echo "=== ccache stats after target + packages ==="
+          ccache -s || true
           echo "=== root-mediatek ===" && ls build_dir/target-aarch64_cortex-a53_musl/root-mediatek/ | wc -l || echo "MISSING"
 
       - name: Build firmware image
@@ -579,10 +622,12 @@ jobs:
           mkdir -p output/firmware output/packages
 
           # Прошивка
-          find openwrt/bin/targets -name "*sysupgrade*.bin" -o -name "sha256sums" -o -name "*.manifest" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
-          find openwrt/bin/targets -name "*initramfs*.bin" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
-          find openwrt/bin/targets -name "sha256sums" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
-          find openwrt/bin/targets -name "*.manifest" | xargs -I{} cp {} output/firmware/ 2>/dev/null || true
+          find openwrt/bin/targets \( \
+            -name "*sysupgrade*.bin" -o \
+            -name "*initramfs*.bin" -o \
+            -name "sha256sums" -o \
+            -name "*.manifest" \
+          \) -exec cp {} output/firmware/ \; 2>/dev/null || true
 
           # Пакеты (для APK repo)
           rsync -av openwrt/bin/packages/ output/packages/ 2>/dev/null || true
@@ -831,6 +876,14 @@ jobs:
         with:
           path: openwrt/dl
           key: ${{ steps.cache-openwrt-dl.outputs.cache-primary-key }}
+
+      - name: Save OpenWrt feeds
+        if: always() && steps.cache-openwrt-feeds.outputs.cache-primary-key != '' && steps.cache-openwrt-feeds.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/feeds
+          key: ${{ steps.cache-openwrt-feeds.outputs.cache-primary-key }}
 
       - name: Save OpenWrt tools/toolchain
         if: always() && steps.cache-openwrt-toolchain.outputs.cache-primary-key != '' && steps.cache-openwrt-toolchain.outputs.cache-hit != 'true'
