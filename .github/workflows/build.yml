@@ -703,14 +703,24 @@ jobs:
           else
             CHANGES="Initial build"
           fi
+          TAG="${{ steps.tag.outputs.tag }}"
           APK_URL="https://darkworon.github.io/openwrt-mt6000-releases/packages/${{ steps.tag.outputs.tag }}/"
+          export TAG APK_URL OPENWRT_SHA PESA_BRANCH KERNEL_COUNT MT76_COUNT RSS_COUNT WED_COUNT CHANGES
 
-          NOTES="## OpenWrt MT6000 ${{ steps.tag.outputs.tag }}
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+
+          def env(name, default=""):
+              return os.environ.get(name, default)
+
+          changes = env("CHANGES", "Нет изменений") or "Нет изменений"
+          notes = f"""## OpenWrt MT6000 {env("TAG")}
 
           ### Патчи
-          - 🔀 **RSS**: ${RSS_COUNT} патчей — 4 Rx rings, +30-40% ethernet throughput
-          - 🛠️ **WED/fixes**: ${WED_COUNT} патчей — hardware WiFi offload, jumbo frames
-          - 📡 **mt76**: ${MT76_COUNT} патчей — ATF, iBF beamforming, VHT 256QAM 2.4GHz
+          - 🔀 **RSS**: {env("RSS_COUNT")} патчей — 4 Rx rings, +30-40% ethernet throughput
+          - 🛠️ **WED/fixes**: {env("WED_COUNT")} патчей — hardware WiFi offload, jumbo frames
+          - 📡 **mt76**: {env("MT76_COUNT")} патчей — ATF, iBF beamforming, VHT 256QAM 2.4GHz
           - ⚙️ **advanced_setup**: IRQ affinity + RPS autotuning
 
           ### Feeds
@@ -718,33 +728,37 @@ jobs:
           - luci: darkworon/openwrt-mt6000-luci @ next-v4
           - video: openwrt/video @ main
           - dae: darkworon/openwrt-dae
-          - dae outbound: \`${DAE_OUTBOUND_REPO:-https://github.com/darkworon/outbound.git}\` @ \`${DAE_OUTBOUND_REF:-stickyip-salamander}\`
+          - dae outbound: `{env("DAE_OUTBOUND_REPO", "https://github.com/darkworon/outbound.git")}` @ `{env("DAE_OUTBOUND_REF", "stickyip-salamander")}`
 
           ### DAE
-          - dae source: \`${DAE_SOURCE_REF:-main}\` @ \`${DAE_SOURCE_VERSION:-unknown}\`
-          - outbound replace: \`${DAE_OUTBOUND_REPO:-https://github.com/darkworon/outbound.git}\` @ \`${DAE_OUTBOUND_REF:-stickyip-salamander}\`
+          - dae source: `{env("DAE_SOURCE_REF", "main")}` @ `{env("DAE_SOURCE_VERSION", "unknown")}`
+          - outbound replace: `{env("DAE_OUTBOUND_REPO", "https://github.com/darkworon/outbound.git")}` @ `{env("DAE_OUTBOUND_REF", "stickyip-salamander")}`
 
           ### Upstream
-          - openwrt/openwrt @ \`${OPENWRT_SHA}\`
-          - pesa1234 tracked: \`${PESA_BRANCH}\`
+          - openwrt/openwrt @ `{env("OPENWRT_SHA")}`
+          - pesa1234 tracked: `{env("PESA_BRANCH")}`
 
           ### APK repo для этой прошивки
-          \`\`\`
-          ${APK_URL}
-          \`\`\`
+          ```
+          {env("APK_URL")}
+          ```
 
           ### Изменения
-          \`\`\`
-          ${CHANGES:-Нет изменений}
-          \`\`\`
+          ```
+          {changes}
+          ```
 
           ---
-          **Установка:** LuCI → System → Backup/Flash Firmware  
-          **SHA256:** см. sha256sums в assets"
-
-          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
-          echo "$NOTES" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          **Установка:** LuCI → System → Backup/Flash Firmware
+          **SHA256:** см. sha256sums в assets
+          """
+          notes = "\n".join(line[10:] if line.startswith("          ") else line for line in notes.splitlines()) + "\n"
+          Path("/tmp/release_notes.md").write_text(notes, encoding="utf-8")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("NOTES<<EOF\n")
+              out.write(notes)
+              out.write("EOF\n")
+          PY
 
       - name: Publish to openwrt-mt6000-releases
         if: github.ref == 'refs/heads/main'
@@ -754,7 +768,6 @@ jobs:
           TAG="${{ steps.tag.outputs.tag }}"
 
           # Создаём Release в releases репо
-          echo "${{ steps.notes.outputs.NOTES }}" > /tmp/release_notes.md
           gh release create "$TAG" \
             --repo darkworon/openwrt-mt6000-releases \
             --title "OpenWrt MT6000 $TAG" \
