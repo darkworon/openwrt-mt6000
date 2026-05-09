@@ -8,9 +8,20 @@ set -eu
 uci -q batch <<'EOF'
 set firewall.@defaults[0].flow_offloading='0'
 set firewall.@defaults[0].flow_offloading_hw='0'
-set network.globals.packet_steering='1'
+set network.globals.packet_steering='0'
 commit firewall
 commit network
 EOF
+
+if ! uci -q get advanced.@advanced_packet_steering[0] >/dev/null; then
+	uci -q set advanced.packet_steering='advanced_packet_steering'
+	advanced_section='advanced.packet_steering'
+else
+	advanced_section='advanced.@advanced_packet_steering[0]'
+fi
+
+uci -q set "$advanced_section.advanced_packet_steering_enable=2"
+uci -q set "$advanced_section.advanced_packet_steering_delay=30"
+uci -q commit advanced
 
 exit 0

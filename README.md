@@ -89,7 +89,8 @@ GitHub Pages работает только на публичных репо (Fre
 
 **`etc/uci-defaults/99-proxy-policy-base`** — первый boot baseline под `dae + Hysteria2`:
 - отключает software/hardware flow offload в firewall;
-- включает `network.globals.packet_steering`.
+- выключает дефолтный OpenWrt `network.globals.packet_steering`;
+- включает `Advanced -> Packet Steering` в режиме `2` с boot delay `30s`.
 
 **`etc/sysctl.d/99-vpn-tune.conf`** — сетевой runtime tuning для VPN/QUIC:
 - `net.core.default_qdisc = fq` для pacing;
