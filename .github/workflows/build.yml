@@ -150,7 +150,11 @@ jobs:
 
       - name: Verify proxy policy overlay
         run: |
-          grep -q "set network.globals.packet_steering='1'" \
+          grep -q "set network.globals.packet_steering='0'" \
+            mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/99-proxy-policy-base
+          grep -q "advanced_packet_steering_enable=2" \
+            mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/99-proxy-policy-base
+          grep -q "advanced_packet_steering_delay=30" \
             mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/99-proxy-policy-base
           grep -q "net.core.default_qdisc = fq" \
             mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/sysctl.d/99-vpn-tune.conf
