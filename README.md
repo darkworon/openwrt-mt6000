@@ -74,7 +74,7 @@ GitHub Pages работает только на публичных репо (Fre
 **`mt6000.diffconfig`:**
 - Target: `mediatek/filogic`, device: `glinet_gl-mt6000`
 - Пакеты: `dae`, `adguardhome`, `zerotier`, `luci`, `luci-app-advanced`,
-  `luci-app-adguardhome`, `luci-app-zerotier`, `uhttpd`, `rpcd-*`,
+  `uhttpd`, `rpcd-*`,
   `wpad-openssl`, `dnsmasq-full`, `ip-full`, `iwinfo`, `bridger`,
   `curl` с HTTP/3 (`libnghttp3`/`libngtcp2`),
   `kmod-sched`, `kmod-sched-core`, `kmod-sched-bpf`, `kmod-sched-act-vlan`,
@@ -150,7 +150,7 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 9. Проверить, что custom `dae` собирается с `hysteria2`/`hy2` outbound и Salamander
 10. make defconfig + проверка DAE параметров и критичных пакетов
 11. make tools + toolchain + target + packages + image
-12. Smoke test: firmware > 10MB, dae + adguardhome + zerotier + luci-app-advanced + luci-app-adguardhome + luci-app-zerotier + curl HTTP/3 + pacing/BBR kmods в manifest
+12. Smoke test: firmware > 10MB, dae + adguardhome + zerotier + luci-app-advanced + curl HTTP/3 + pacing/BBR kmods в manifest
 13. Публикация Release в openwrt-mt6000-releases (прошивка + пакеты)
 14. Обновление APK index.json на GitHub Pages
 15. Ротация: оставить 5 последних релизов и Pages entries
