@@ -5,6 +5,10 @@ on:
     - cron: '0 3 * * 5'  # каждую пятницу в 03:00 UTC (перед сборкой в 05:00)
   workflow_dispatch:
 
+concurrency:
+  group: mt6000-sync-forks-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
 

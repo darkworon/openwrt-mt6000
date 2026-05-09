@@ -33,8 +33,18 @@ jobs:
           git clone --depth=1 --branch main https://github.com/openwrt/openwrt.git openwrt
           echo "OpenWrt SHA: $(git -C openwrt rev-parse --short HEAD)"
 
-      - name: Cache toolchain
-        uses: actions/cache@v4
+      - name: Restore OpenWrt downloads
+        id: cache-openwrt-dl
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/dl
+          key: openwrt-dl-v1-${{ hashFiles('mt6000-overlay/config/feeds.conf.default', 'mt6000-overlay/config/mt6000.diffconfig') }}
+          restore-keys: |
+            openwrt-dl-v1-
+
+      - name: Restore toolchain
+        id: cache-openwrt-toolchain
+        uses: actions/cache/restore@v4
         with:
           path: |
             openwrt/staging_dir/host
@@ -47,7 +57,6 @@ jobs:
             openwrt-toolchain-
             validate-toolchain-
             tools-openwrt-
-          save-always: true
 
       - name: Apply mt76 overlay (Makefile pin)
         run: |
@@ -143,6 +152,25 @@ jobs:
             grep -v "^#\|//\| \* " | tail -80 || true
           echo "=== mt76 compile result: $status ==="
           exit $status
+
+      - name: Save OpenWrt downloads
+        if: always() && steps.cache-openwrt-dl.outputs.cache-primary-key != '' && steps.cache-openwrt-dl.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/dl
+          key: ${{ steps.cache-openwrt-dl.outputs.cache-primary-key }}
+
+      - name: Save toolchain
+        if: always() && steps.cache-openwrt-toolchain.outputs.cache-primary-key != '' && steps.cache-openwrt-toolchain.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/hostpkg
+            openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
+          key: ${{ steps.cache-openwrt-toolchain.outputs.cache-primary-key }}
 
       - name: Notify Telegram on failure
         if: failure()

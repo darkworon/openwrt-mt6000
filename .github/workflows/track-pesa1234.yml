@@ -6,6 +6,10 @@ on:
     - cron: '0 4 * * 3'  # среда 04:00 UTC
   workflow_dispatch:
 
+concurrency:
+  group: mt6000-track-pesa1234-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   track:
     runs-on: ubuntu-22.04

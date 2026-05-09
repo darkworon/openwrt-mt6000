@@ -7,6 +7,7 @@ on:
       - 'patches/**'
       - 'config/**'
       - 'files/**'
+      - 'scripts/**'
       - '.github/workflows/build.yml'
   schedule:
     - cron: '0 5 * * 5'  # пятница 05:00 UTC (после track вс+ср)
@@ -28,6 +29,10 @@ on:
         description: "outbound branch/tag/ref with salamander support"
         default: "stickyip-salamander"
         required: true
+      debug_rebuild:
+        description: "Run slow verbose clean/rebuild diagnostics on successful path"
+        default: "false"
+        required: true
 
 permissions:
   contents: write
@@ -45,6 +50,7 @@ jobs:
       DAE_SOURCE_REF: ${{ github.event.inputs.dae_source_ref || 'main' }}
       DAE_SOURCE_VERSION: ${{ github.event.inputs.dae_source_version || 'latest' }}
       DAE_OUTBOUND_REF: ${{ github.event.inputs.dae_outbound_ref || 'stickyip-salamander' }}
+      DEBUG_REBUILD: ${{ github.event.inputs.debug_rebuild || 'false' }}
 
     steps:
       - name: Checkout this repo (patches + config)
@@ -65,16 +71,23 @@ jobs:
             build-essential clang flex bison g++ gawk gcc-multilib \
             g++-multilib gettext git libncurses-dev libssl-dev \
             python3-setuptools rsync swig unzip zlib1g-dev \
-            file wget curl libelf-dev dwarves
+            file wget curl libelf-dev dwarves ccache
 
-      - name: Cache ccache
-        uses: actions/cache@v4
+      - name: Restore ccache
+        id: cache-ccache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.ccache
-          key: ccache-mt6000-${{ github.sha }}
+          key: ccache-mt6000-v2-${{ runner.os }}-${{ github.sha }}
           restore-keys: |
+            ccache-mt6000-v2-${{ runner.os }}-
             ccache-mt6000-
-          save-always: true
+
+      - name: Configure ccache
+        run: |
+          mkdir -p ~/.ccache
+          CCACHE_DIR="$HOME/.ccache" ccache -M 2G
+          CCACHE_DIR="$HOME/.ccache" ccache -z || true
 
       - name: Clone official OpenWrt (upstream)
         run: |
@@ -84,8 +97,18 @@ jobs:
           cd openwrt
           echo "OpenWrt upstream SHA: $(git rev-parse HEAD)"
 
-      - name: Cache OpenWrt tools/toolchain
-        uses: actions/cache@v4
+      - name: Restore OpenWrt downloads
+        id: cache-openwrt-dl
+        uses: actions/cache/restore@v4
+        with:
+          path: openwrt/dl
+          key: openwrt-dl-v1-${{ hashFiles('mt6000-overlay/config/feeds.conf.default', 'mt6000-overlay/config/mt6000.diffconfig') }}
+          restore-keys: |
+            openwrt-dl-v1-
+
+      - name: Restore OpenWrt tools/toolchain
+        id: cache-openwrt-toolchain
+        uses: actions/cache/restore@v4
         with:
           path: |
             openwrt/staging_dir/host
@@ -98,7 +121,6 @@ jobs:
             openwrt-toolchain-
             validate-toolchain-
             tools-openwrt-
-          save-always: true
 
       - name: Apply kernel patches (pesa1234 series)
         run: |
@@ -462,17 +484,21 @@ jobs:
           fi
           [ "$status" -eq 0 ] || exit $status
 
-          echo "=== dae verbose prebuild ==="
-          make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/custom/dae/clean > /tmp/dae-clean.log 2>&1
-          make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/custom/dae/compile 2>&1 | tee /tmp/dae-debug.log
-          dae_status=${PIPESTATUS[0]}
-          if [ "$dae_status" -ne 0 ]; then
-            echo "=== dae filtered errors ==="
-            grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:|undefined:|cannot use|go: " /tmp/dae-debug.log | \
-              grep -v "^#\|//\| \* " | tail -160 || true
-            echo "=== dae verbose result: $dae_status ==="
+          if [ "${DEBUG_REBUILD}" = "true" ]; then
+            echo "=== dae verbose prebuild ==="
+            make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/custom/dae/clean > /tmp/dae-clean.log 2>&1
+            make -j1 V=s CCACHE_DIR=~/.ccache USE_CCACHE=1 package/custom/dae/compile 2>&1 | tee /tmp/dae-debug.log
+            dae_status=${PIPESTATUS[0]}
+            if [ "$dae_status" -ne 0 ]; then
+              echo "=== dae filtered errors ==="
+              grep -E "error:|warning: .*error|Hunk|reject|FAILED|failed to build|ERROR:|undefined:|cannot use|go: " /tmp/dae-debug.log | \
+                grep -v "^#\|//\| \* " | tail -160 || true
+              echo "=== dae verbose result: $dae_status ==="
+            fi
+            [ "$dae_status" -eq 0 ] || exit "$dae_status"
+          else
+            echo "Skipping dae verbose prebuild (DEBUG_REBUILD=false); package/compile will build dae normally"
           fi
-          [ "$dae_status" -eq 0 ] || exit "$dae_status"
 
           make -j$(nproc) CCACHE_DIR=~/.ccache USE_CCACHE=1 package/compile > /tmp/package-compile.log 2>&1
           status=$?
@@ -776,6 +802,33 @@ jobs:
             | xargs -I{} gh release delete {} \
               --repo darkworon/openwrt-mt6000-releases \
               --yes --cleanup-tag 2>/dev/null || true
+
+      - name: Save ccache
+        if: always() && steps.cache-ccache.outputs.cache-primary-key != '' && steps.cache-ccache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.ccache
+          key: ${{ steps.cache-ccache.outputs.cache-primary-key }}
+
+      - name: Save OpenWrt downloads
+        if: always() && steps.cache-openwrt-dl.outputs.cache-primary-key != '' && steps.cache-openwrt-dl.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: openwrt/dl
+          key: ${{ steps.cache-openwrt-dl.outputs.cache-primary-key }}
+
+      - name: Save OpenWrt tools/toolchain
+        if: always() && steps.cache-openwrt-toolchain.outputs.cache-primary-key != '' && steps.cache-openwrt-toolchain.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            openwrt/staging_dir/host
+            openwrt/staging_dir/hostpkg
+            openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
+          key: ${{ steps.cache-openwrt-toolchain.outputs.cache-primary-key }}
 
       - name: Notify Telegram
         if: github.ref == 'refs/heads/main' && always()
