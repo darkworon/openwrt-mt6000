@@ -545,7 +545,7 @@ jobs:
             exit 1
           fi
           missing=0
-          for pkg in dae adguardhome zerotier luci luci-app-advanced uhttpd rpcd-mod-iwinfo rpcd-mod-rpcsys wpad-openssl dnsmasq-full ip-full iwinfo bridger curl libcurl libnghttp2 libnghttp3 libngtcp2 kmod-sched kmod-sched-core kmod-sched-bpf kmod-sched-act-vlan kmod-sched-flower kmod-nf-conntrack-netlink kmod-nft-tproxy kmod-xdp-sockets-diag kmod-tcp-bbr; do
+          for pkg in dae adguardhome zerotier luci luci-app-advanced uhttpd rpcd-mod-iwinfo rpcd-mod-rpcsys wpad-openssl dnsmasq-full ip-full iwinfo bridger curl libcurl4 libnghttp2-14 libnghttp3 libngtcp2 kmod-sched kmod-sched-core kmod-sched-bpf kmod-sched-act-vlan kmod-sched-flower kmod-nf-conntrack-netlink kmod-nft-tproxy kmod-xdp-sockets-diag kmod-tcp-bbr; do
               if grep -Eq "^${pkg} - " "$MANIFEST"; then
                 echo "OK: $pkg present in manifest"
               else
