@@ -135,9 +135,9 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 
 | Workflow | Триггер | Что делает |
 |----------|---------|------------|
-| `validate.yml` | Push в patches/ | Быстрая валидация патчей (~20-40 мин), уведомление в Telegram при ошибке |
+| `validate.yml` | Ручной запуск | Тяжелая валидация патчей/kernel/mt76 без автоматического дубля full build |
 | `track-pesa1234.yml` | Вс + Ср 04:00 UTC, ручной | Проверяет обновления у pesa1234, создаёт Issue (пропускает EXCLUDED.md) |
-| `build.yml` | Пт 05:00 UTC, push в patches/config/files, ручной | Полная сборка и публикация, включая custom `dae` |
+| `build.yml` | Пт 05:00 UTC, push в patches/config/files, ручной | Единственный automatic push build: полная сборка и публикация, включая custom `dae` |
 
 ### Как работает сборка (build.yml)
 
@@ -152,7 +152,7 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 8. Подключить darkworon/openwrt-dae как custom package `dae`
 9. Проверить, что custom `dae` собирается с `hysteria2`/`hy2` outbound и Salamander
 10. make defconfig + проверка DAE параметров и критичных пакетов
-11. make tools + toolchain + target + packages + image
+11. make tools + toolchain + target + packages + image. Toolchain cache intentionally ignores `diffconfig`, so package/kmod changes do not invalidate the expensive host/toolchain cache.
 12. Smoke test: firmware > 10MB, dae + adguardhome + zerotier + luci-app-advanced + curl HTTP/3 + pacing/BBR kmods в manifest
 13. Публикация Release в openwrt-mt6000-releases (прошивка + пакеты)
 14. Обновление APK index.json на GitHub Pages

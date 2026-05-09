@@ -1,14 +1,11 @@
 name: Validate patches
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'patches/**'
-      - 'config/**'
-      - 'files/package/kernel/mt76/**'
-      - '.github/workflows/validate.yml'
   workflow_dispatch:
+
+concurrency:
+  group: mt6000-validate-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -43,8 +40,9 @@ jobs:
             openwrt/staging_dir/host
             openwrt/staging_dir/hostpkg
             openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
-          key: openwrt-toolchain-v2-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**', 'mt6000-overlay/config/mt6000.diffconfig') }}
+          key: openwrt-toolchain-v3-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**') }}
           restore-keys: |
+            openwrt-toolchain-v3-
             openwrt-toolchain-v2-
             openwrt-toolchain-
             validate-toolchain-

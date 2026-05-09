@@ -32,6 +32,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: mt6000-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -87,8 +91,9 @@ jobs:
             openwrt/staging_dir/host
             openwrt/staging_dir/hostpkg
             openwrt/staging_dir/toolchain-aarch64_cortex-a53_musl
-          key: openwrt-toolchain-v2-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**', 'mt6000-overlay/config/mt6000.diffconfig') }}
+          key: openwrt-toolchain-v3-${{ hashFiles('openwrt/tools/**', 'openwrt/toolchain/**') }}
           restore-keys: |
+            openwrt-toolchain-v3-
             openwrt-toolchain-v2-
             openwrt-toolchain-
             validate-toolchain-
