@@ -37,7 +37,7 @@ Fork of pesa1234/openwrt. mt76 patches live in `package/kernel/mt76/patches/`.
 ## How to add patches
 
 ```bash
-git clone --depth=1 --branch next-r4.8.2.rss.mtk https://github.com/pesa1234/openwrt.git /tmp/pesa1234
+git clone --depth=1 --branch next-r4.8.3.rss.mtk https://github.com/pesa1234/openwrt.git /tmp/pesa1234
 rm -f patches/mt76/*.patch
 for f in /tmp/pesa1234/package/kernel/mt76/patches/*.patch; do
   name=$(basename "$f")

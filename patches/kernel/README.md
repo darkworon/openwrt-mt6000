@@ -4,7 +4,7 @@ Patches applied to the active `target/linux/mediatek/patches-*` directory during
 
 ## Source
 
-Fork of pesa1234/openwrt, branch `next-r4.8.2.rss.mtk`.
+Fork of pesa1234/openwrt, branch `next-r4.8.3.rss.mtk`.
 
 ## Patch series
 
@@ -41,7 +41,7 @@ Fork of pesa1234/openwrt, branch `next-r4.8.2.rss.mtk`.
 
 1. Extract patch from pesa1234/openwrt:
    ```bash
-   git clone --depth=1 --branch next-r4.8.2.rss.mtk https://github.com/pesa1234/openwrt.git /tmp/pesa1234
+   git clone --depth=1 --branch next-r4.8.3.rss.mtk https://github.com/pesa1234/openwrt.git /tmp/pesa1234
    KERNEL_DIR=$(ls -d /tmp/pesa1234/target/linux/mediatek/patches-* | sort -V | tail -n1)
    cp "$KERNEL_DIR"/999-*.patch patches/kernel/
    ```

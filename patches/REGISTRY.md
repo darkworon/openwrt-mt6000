@@ -1,6 +1,6 @@
 # Реестр патчей pesa1234 для GL-MT6000
 
-**Источник:** `pesa1234/openwrt`, ветка `next-r4.8.2.rss.mtk`
+**Источник:** `pesa1234/openwrt`, ветка `next-r4.8.3.rss.mtk`
 
 **Дата синхронизации:** 2026-05-05
 
@@ -48,7 +48,7 @@
 ## Обновление
 
 ```bash
-BRANCH=next-r4.8.2.rss.mtk
+BRANCH=next-r4.8.3.rss.mtk
 git clone --depth=1 --branch "$BRANCH" https://github.com/pesa1234/openwrt.git /tmp/pesa1234
 KERNEL_DIR=$(ls -d /tmp/pesa1234/target/linux/mediatek/patches-* | sort -V | tail -n1)
 
