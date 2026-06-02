@@ -69,6 +69,12 @@ GitHub Pages работает только на публичных репо (Fre
 - повторные NTP `stratum` events игнорирует через `/var/state/zerotier-ntp-restarted`;
 - предотвращает постоянный flap `zt0` и firewall reload, которые роняют dae-routed client traffic.
 
+**`etc/init.d/sing-box-wg-edge`** — автозапуск proxy-policy `sing-box wg-edge` dataplane:
+- при boot вызывает `/root/sing-box-wg-edge-switch.sh start` после короткой задержки;
+- поднимает `sing-box`, DNS listener `0.0.0.0:53`, TPROXY `127.0.0.1:12347`,
+  nft table `proxy_policy_singbox_wg_edge` и policy route `fwmark 0x67 -> table 1067`;
+- включается на first boot через `etc/uci-defaults/97-sing-box-wg-edge-autostart`.
+
 ### Конфиг (`config/`)
 
 **`mt6000.diffconfig`:**
@@ -89,6 +95,7 @@ GitHub Pages работает только на публичных репо (Fre
 
 **`etc/uci-defaults/99-proxy-policy-base`** — первый boot baseline под `dae + Hysteria2`:
 - отключает software/hardware flow offload в firewall;
+- переводит `dnsmasq` на port `54`, чтобы `sing-box wg-edge` мог слушать клиентский DNS на `:53`;
 - выключает дефолтный OpenWrt `network.globals.packet_steering`;
 - включает `Advanced -> Packet Steering` в режиме `2` с boot delay `30s`.
 
@@ -99,6 +106,7 @@ GitHub Pages работает только на публичных репо (Fre
 
 **`etc/uci-defaults/98-proxy-policy-sysupgrade-keep`** — keep-list для sysupgrade:
 - сохраняет `/etc/dae/`, чтобы include-файлы DAE не терялись при следующем обновлении;
+- сохраняет `/etc/sing-box/` и `/root/sing-box-wg-edge-switch.sh` для `sing-box wg-edge`;
 - сохраняет `/var/lib/adguardhome/`, `/var/lib/zerotier-one/` и кастомные root-скрипты.
 
 **`dae-kernel.config`** — параметры ядра для DAE (eBPF transparent proxy):

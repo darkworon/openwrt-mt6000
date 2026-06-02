@@ -196,8 +196,20 @@ jobs:
             mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/99-proxy-policy-base
           grep -q "advanced_packet_steering_delay=30" \
             mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/99-proxy-policy-base
+          grep -q "set dhcp.@dnsmasq\\[0\\].port='54'" \
+            mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/99-proxy-policy-base
           grep -q "net.core.default_qdisc = fq" \
             mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/sysctl.d/99-vpn-tune.conf
+          test -x mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/init.d/sing-box-wg-edge
+          grep -q '/root/sing-box-wg-edge-switch.sh' \
+            mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/init.d/sing-box-wg-edge
+          test -x mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/97-sing-box-wg-edge-autostart
+          grep -q '/etc/init.d/sing-box-wg-edge enable' \
+            mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/97-sing-box-wg-edge-autostart
+          grep -q '/etc/sing-box/' \
+            mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/98-proxy-policy-sysupgrade-keep
+          grep -q '/root/sing-box-wg-edge-switch.sh' \
+            mt6000-overlay/files/target/linux/mediatek/filogic/base-files/etc/uci-defaults/98-proxy-policy-sysupgrade-keep
 
       - name: Resolve latest dae source
         run: |

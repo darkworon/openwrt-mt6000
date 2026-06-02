@@ -8,7 +8,9 @@ set -eu
 uci -q batch <<'EOF'
 set firewall.@defaults[0].flow_offloading='0'
 set firewall.@defaults[0].flow_offloading_hw='0'
+set dhcp.@dnsmasq[0].port='54'
 set network.globals.packet_steering='0'
+commit dhcp
 commit firewall
 commit network
 EOF

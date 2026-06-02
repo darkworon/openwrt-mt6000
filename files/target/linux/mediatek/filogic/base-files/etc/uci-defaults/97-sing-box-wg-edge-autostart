@@ -1,0 +1,7 @@
+#!/bin/sh
+
+set -eu
+
+/etc/init.d/sing-box-wg-edge enable
+
+exit 0

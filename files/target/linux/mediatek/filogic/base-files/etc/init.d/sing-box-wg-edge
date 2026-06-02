@@ -1,0 +1,53 @@
+#!/bin/sh /etc/rc.common
+
+START=55
+STOP=45
+USE_PROCD=0
+EXTRA_COMMANDS="health"
+EXTRA_HELP="	health          Run wg-edge dataplane health checks"
+
+SWITCH_SCRIPT="${SWITCH_SCRIPT:-/root/sing-box-wg-edge-switch.sh}"
+
+boot() {
+	# Wait until network/adguardhome/dnsmasq have had a chance to settle.
+	sleep 8
+	start
+}
+
+start() {
+	if [ ! -x "$SWITCH_SCRIPT" ]; then
+		logger -t sing-box-wg-edge "missing switch script: $SWITCH_SCRIPT"
+		return 1
+	fi
+	"$SWITCH_SCRIPT" start
+}
+
+stop() {
+	if [ -x "$SWITCH_SCRIPT" ]; then
+		"$SWITCH_SCRIPT" stop
+	fi
+}
+
+restart() {
+	if [ ! -x "$SWITCH_SCRIPT" ]; then
+		logger -t sing-box-wg-edge "missing switch script: $SWITCH_SCRIPT"
+		return 1
+	fi
+	"$SWITCH_SCRIPT" restart
+}
+
+status_service() {
+	if [ ! -x "$SWITCH_SCRIPT" ]; then
+		echo "missing switch script: $SWITCH_SCRIPT"
+		return 1
+	fi
+	"$SWITCH_SCRIPT" status
+}
+
+health() {
+	if [ ! -x "$SWITCH_SCRIPT" ]; then
+		echo "missing switch script: $SWITCH_SCRIPT"
+		return 1
+	fi
+	"$SWITCH_SCRIPT" health
+}

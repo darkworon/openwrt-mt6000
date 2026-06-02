@@ -8,8 +8,10 @@ touch "$KEEP_FILE"
 
 for path in \
 	/etc/dae/ \
+	/etc/sing-box/ \
 	/root/dae-safe-reload.sh \
 	/root/proxy-policy-target-apply.sh \
+	/root/sing-box-wg-edge-switch.sh \
 	/root/update.sh \
 	/var/lib/adguardhome/ \
 	/var/lib/zerotier-one/
