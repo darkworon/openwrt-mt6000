@@ -157,7 +157,7 @@ If upstream creates a `master` branch later, set `DAE_SOURCE_REF=master`.
 4. Скопировать files/ → openwrt/ (advanced_setup и др.)
 5. Проверить, что локальные pesa1234-патчи и feed forks синхронны с upstream
 6. feeds.conf → darkworon/openwrt-mt6000-packages:next-r4.mtk + darkworon/openwrt-mt6000-luci:next-v4
-7. Зафиксировать Go toolchain patchlevel на `1.26.2`
+7. Зафиксировать Go toolchain patchlevel на `1.26.3`
 8. Подключить darkworon/openwrt-dae как custom package `dae`
 9. Проверить, что custom `dae` собирается с `hysteria2`/`hy2` outbound и Salamander
 10. make defconfig + проверка DAE параметров и критичных пакетов

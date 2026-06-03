@@ -263,13 +263,13 @@ jobs:
           GO_MAKEFILE="feeds/packages/lang/golang/golang1.26/Makefile"
           test -f "$GO_MAKEFILE"
           sed -i \
-            -e 's/^GO_VERSION_PATCH:=.*/GO_VERSION_PATCH:=2/' \
-            -e 's/^PKG_HASH:=.*/PKG_HASH:=2e91ebb6947a96e9436fb2b3926a8802efe63a6d375dffec4f82aa9dbd6fd43b/' \
+            -e 's/^GO_VERSION_PATCH:=.*/GO_VERSION_PATCH:=3/' \
+            -e 's/^PKG_HASH:=.*/PKG_HASH:=1c646875d0aa8799133184ed57cf79ff24bdefe8c8820470602a9d3d6d9192b8/' \
             "$GO_MAKEFILE"
           grep -q '^GO_DEFAULT_VERSION:=1.26$' feeds/packages/lang/golang/golang-values.mk
-          grep -q '^GO_VERSION_PATCH:=2$' "$GO_MAKEFILE"
-          grep -q '^PKG_HASH:=2e91ebb6947a96e9436fb2b3926a8802efe63a6d375dffec4f82aa9dbd6fd43b$' "$GO_MAKEFILE"
-          echo "Pinned OpenWrt golang feed to Go 1.26.2"
+          grep -q '^GO_VERSION_PATCH:=3$' "$GO_MAKEFILE"
+          grep -q '^PKG_HASH:=1c646875d0aa8799133184ed57cf79ff24bdefe8c8820470602a9d3d6d9192b8$' "$GO_MAKEFILE"
+          echo "Pinned OpenWrt golang feed to Go 1.26.3"
 
       - name: Add dae packages (from openwrt-dae)
         run: |
