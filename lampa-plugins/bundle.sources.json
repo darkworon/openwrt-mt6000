@@ -1,4 +1,5 @@
 [
   "adblock/plugin.js",
-  "torrserver-subtitles/plugin.js"
+  "torrserver-subtitles/plugin.js",
+  "english-tracks/plugin.js"
 ]

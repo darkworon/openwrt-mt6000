@@ -4,7 +4,9 @@
 
 - `adblock/plugin.js` — блокировка preroll и player-banner;
 - `torrserver-subtitles/plugin.js` — штатное оформление Lampa для встроенных
-  субтитров TorrServer.
+  субтитров TorrServer;
+- `english-tracks/plugin.js` — автоматический выбор английской аудиодорожки и
+  полных английских субтитров.
 
 Состав и порядок сборки задаёт `bundle.sources.json`. Новый плагин сначала
 добавляется отдельным исходником, затем явно включается в этот манифест.
