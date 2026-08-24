@@ -14,7 +14,7 @@
 Добавьте в Lampa через **Настройки -> Расширения -> Добавить плагин**:
 
 ```text
-https://cdn.jsdelivr.net/gh/darkworon/openwrt-mt6000@main/lampa-plugins/adblock/plugin.js
+https://darkworon.github.io/l.js
 ```
 
 После первой установки перезапустите Lampa. Переключатель находится в разделе
