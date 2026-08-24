@@ -2,10 +2,11 @@
     'use strict'
 
     var PLUGIN_NAME = 'Lampa English Tracks'
-    var PLUGIN_VERSION = '1.0.0'
+    var PLUGIN_VERSION = '1.1.0'
     var SETTING_ENABLED = 'english_tracks_enabled'
     var SETTING_REMEMBER = 'english_tracks_remember'
-    var PREFERENCES_KEY = 'english_tracks_preferences'
+    var PREFERENCES_KEY = 'english_tracks_preferences_v2'
+    var LEGACY_PREFERENCES_KEY = 'english_tracks_preferences'
     var MAX_PREFERENCES = 200
 
     if (window.LampaEnglishTracks) return
@@ -18,7 +19,8 @@
         audioSelections: 0,
         subtitleSelections: 0,
         savedPreferences: 0,
-        restoredPreferences: 0
+        restoredPreferences: 0,
+        playerParamSyncs: 0
     }
 
     window.LampaEnglishTracks = state
@@ -334,6 +336,58 @@
         catch (error) {}
     }
 
+    function runOnSelect(item) {
+        try {
+            if (item && typeof item.onSelect === 'function') item.onSelect(item)
+        }
+        catch (error) {}
+    }
+
+    function syncPlayerParams(kind, item, index) {
+        try {
+            if (!window.Lampa || !Lampa.PlayerVideo) return
+
+            var params = typeof Lampa.PlayerVideo.saveParams === 'function'
+                ? Lampa.PlayerVideo.saveParams() || {}
+                : {}
+
+            if (kind === 'audio') params.track = index
+            else if (kind === 'subtitles') {
+                params.sub = item && item.index !== undefined ? item.index : index
+            }
+
+            if (typeof Lampa.PlayerVideo.setParams === 'function') {
+                Lampa.PlayerVideo.setParams(params)
+            }
+
+            state.playerParamSyncs++
+        }
+        catch (error) {}
+    }
+
+    function markApplied(kind, value) {
+        if (!current || !value) return
+
+        current[kind + 'Applied'] = JSON.stringify(value)
+    }
+
+    function captureChanged(kind, value) {
+        if (!current || !value) return
+
+        var key = kind + 'Applied'
+        var serialized = JSON.stringify(value)
+
+        if (typeof current[key] === 'undefined') {
+            current[key] = serialized
+            return
+        }
+
+        if (current[key] === serialized) return
+
+        savePreference(kind, value)
+        current[key] = serialized
+    }
+
     function disableAudio(items) {
         items.forEach(function (item) {
             setProperty(item, 'enabled', false)
@@ -368,12 +422,19 @@
 
         if (index < 0 || !items[index]) return
 
-        disableAudio(items)
-        setProperty(items[index], 'enabled', true)
-        setProperty(items[index], 'selected', true)
+        var activeIndex = selectedAudio(items)
 
-        state.audioSelections++
+        if (activeIndex !== index) {
+            disableAudio(items)
+            setProperty(items[index], 'enabled', true)
+            setProperty(items[index], 'selected', true)
+            runOnSelect(items[index])
+            state.audioSelections++
+        }
+
         state.lastAudio = descriptor(items[index], index, 'audio')
+        markApplied('audio', compactDescriptor(items[index], index, 'audio'))
+        syncPlayerParams('audio', items[index], index)
     }
 
     function applySubtitles(items) {
@@ -383,10 +444,12 @@
         var index = preferenceCandidate(items, 'subtitles', saved)
 
         if (index === -2) {
-            disableSubtitles(items)
+            if (selectedSubtitles(items) !== -2) disableSubtitles(items)
             showSubtitles(false)
             state.restoredPreferences++
             state.lastSubtitles = {off: true}
+            markApplied('subtitles', {off: true})
+            syncPlayerParams('subtitles', {index: -1}, -1)
             return
         }
 
@@ -395,13 +458,21 @@
 
         if (index < 0 || !items[index]) return
 
-        disableSubtitles(items)
-        setProperty(items[index], 'mode', 'showing')
-        setProperty(items[index], 'selected', true)
+        var activeIndex = selectedSubtitles(items)
+
+        if (activeIndex !== index) {
+            disableSubtitles(items)
+            setProperty(items[index], 'mode', 'showing')
+            setProperty(items[index], 'selected', true)
+            runOnSelect(items[index])
+            state.subtitleSelections++
+        }
+
         showSubtitles(true)
 
-        state.subtitleSelections++
         state.lastSubtitles = descriptor(items[index], index, 'subtitles')
+        markApplied('subtitles', compactDescriptor(items[index], index, 'subtitles'))
+        syncPlayerParams('subtitles', items[index], index)
     }
 
     function trimPreferences(preferences) {
@@ -479,16 +550,16 @@
             var audioIndex = selectedAudio(current.tracks)
 
             if (audioIndex >= 0) {
-                savePreference('audio', compactDescriptor(current.tracks[audioIndex], audioIndex, 'audio'))
+                captureChanged('audio', compactDescriptor(current.tracks[audioIndex], audioIndex, 'audio'))
             }
         }
 
         if (current.subtitles && current.subtitles.length) {
             var subtitleIndex = selectedSubtitles(current.subtitles)
 
-            if (subtitleIndex === -2) savePreference('subtitles', {off: true})
+            if (subtitleIndex === -2) captureChanged('subtitles', {off: true})
             else if (subtitleIndex >= 0) {
-                savePreference('subtitles', compactDescriptor(current.subtitles[subtitleIndex], subtitleIndex, 'subtitles'))
+                captureChanged('subtitles', compactDescriptor(current.subtitles[subtitleIndex], subtitleIndex, 'subtitles'))
             }
         }
     }
@@ -551,11 +622,15 @@
 
     function clearPreferences() {
         storageSet(PREFERENCES_KEY, {})
+        storageSet(LEGACY_PREFERENCES_KEY, {})
 
         if (current) {
-            current.lastAudio = null
-            current.lastSubtitles = null
+            delete current.audioApplied
+            delete current.subtitlesApplied
         }
+
+        state.lastAudio = null
+        state.lastSubtitles = null
 
         if (window.Lampa && Lampa.Noty) Lampa.Noty.show('Сохранённые дорожки очищены')
     }
@@ -621,6 +696,8 @@
 
         Lampa.PlayerVideo.listener.follow('tracks', onTracks)
         Lampa.PlayerVideo.listener.follow('subs', onSubtitles)
+        Lampa.PlayerVideo.listener.follow('webos_tracks', onTracks)
+        Lampa.PlayerVideo.listener.follow('webos_subs', onSubtitles)
         Lampa.PlayerVideo.listener.follow('destroy', onVideoDestroy)
 
         return true
@@ -633,8 +710,6 @@
     state.preferences = loadPreferences
 
     installHooks()
-
-    setInterval(captureSelections, 1000)
 
     if (window.appready) installSettings()
     else if (window.Lampa && Lampa.Listener && typeof Lampa.Listener.follow === 'function') {

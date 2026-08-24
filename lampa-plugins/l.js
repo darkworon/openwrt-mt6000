@@ -265,7 +265,7 @@
     'use strict'
 
     var PLUGIN_NAME = 'TorrServer Subtitles'
-    var PLUGIN_VERSION = '1.0.0'
+    var PLUGIN_VERSION = '1.1.0'
     var SETTING_NAME = 'torrserver_subtitles_lampa_style'
     var STYLE_ID = 'torrserver-subtitles-native-style'
     var SUBTITLE_SETTINGS = [
@@ -279,6 +279,8 @@
 
     var session = null
     var latestPlayerData = null
+    var webosTimers = []
+    var lastStoredWebosStyle = ''
 
     var state = {
         version: PLUGIN_VERSION,
@@ -286,6 +288,10 @@
         nativeTracks: 0,
         bridgedTracks: 0,
         renderedFrames: 0,
+        webosStyleApplications: 0,
+        webosStyleAttempts: 0,
+        webosStyleSuccesses: 0,
+        webosStyleFailures: 0,
         settingsInstalled: false
     }
 
@@ -350,6 +356,142 @@
         catch (error) {
             return null
         }
+    }
+
+    function webosServiceAvailable() {
+        return Boolean(
+            window.webOS &&
+            window.webOS.service &&
+            typeof window.webOS.service.request === 'function'
+        )
+    }
+
+    function storedWebosStyle() {
+        var value = storageValue('webos_subs_params', {})
+
+        if (typeof value === 'string') {
+            try {
+                value = JSON.parse(value)
+            }
+            catch (error) {
+                value = {}
+            }
+        }
+
+        return value && typeof value === 'object' ? value : {}
+    }
+
+    function desiredWebosStyle() {
+        var previous = storedWebosStyle()
+        var sizes = {small: 1, normal: 2, large: 3}
+        var size = storageField('subtitles_size', 'normal')
+        var backdrop = asBoolean(storageField('subtitles_backdrop', false))
+
+        return {
+            color: typeof previous.color === 'number' ? previous.color : 2,
+            font_size: sizes[size] !== undefined ? sizes[size] : sizes.normal,
+            bg_color: 'black',
+            position: typeof previous.position === 'number' ? previous.position : -1,
+            bg_opacity: backdrop ? 140 : 0,
+            char_opacity: typeof previous.char_opacity === 'number' ? previous.char_opacity : 255
+        }
+    }
+
+    function persistWebosStyle(style) {
+        var serialized = JSON.stringify(style)
+
+        if (serialized === lastStoredWebosStyle) return
+
+        try {
+            if (window.Lampa && Lampa.Storage && typeof Lampa.Storage.set === 'function') {
+                Lampa.Storage.set('webos_subs_params', style, true)
+                lastStoredWebosStyle = serialized
+            }
+        }
+        catch (error) {}
+    }
+
+    function requestWebosStyle(method, parameters) {
+        state.webosStyleAttempts++
+
+        try {
+            window.webOS.service.request('luna://com.webos.media', {
+                method: method,
+                parameters: parameters,
+                onSuccess: function () {
+                    state.webosStyleSuccesses++
+                },
+                onFailure: function (result) {
+                    state.webosStyleFailures++
+                    state.lastWebosError = result && (result.errorText || result.errorCode) || 'Unknown webOS error'
+                }
+            })
+        }
+        catch (error) {
+            state.webosStyleFailures++
+            state.lastWebosError = error && error.message ? error.message : String(error)
+        }
+    }
+
+    function applyWebosStyle() {
+        if (!enabled() || !isTorrentPlayback(latestPlayerData) || !webosServiceAvailable()) return false
+
+        var video = videoElement()
+
+        if (!video || !video.mediaId) return false
+
+        var style = desiredWebosStyle()
+        var parameters = {
+            mediaId: video.mediaId,
+            color: style.color,
+            fontSize: style.font_size,
+            bgColor: style.bg_color,
+            position: style.position,
+            bgOpacity: style.bg_opacity,
+            charOpacity: style.char_opacity
+        }
+        var methods = [
+            'setSubtitleColor',
+            'setSubtitleBackgroundColor',
+            'setSubtitleFontSize',
+            'setSubtitlePosition',
+            'setSubtitleBackgroundOpacity',
+            'setSubtitleCharacterOpacity'
+        ]
+
+        persistWebosStyle(style)
+
+        methods.forEach(function (method) {
+            requestWebosStyle(method, parameters)
+        })
+
+        state.webosStyleApplications++
+        state.lastWebosStyle = style
+        state.lastWebosMediaId = video.mediaId
+
+        return true
+    }
+
+    function clearWebosTimers() {
+        webosTimers.forEach(function (timer) {
+            clearTimeout(timer)
+        })
+
+        webosTimers = []
+    }
+
+    function scheduleWebosStyle(delays) {
+        ;(delays || [0]).forEach(function (delay) {
+            var timer = setTimeout(function () {
+                var index = webosTimers.indexOf(timer)
+
+                if (index !== -1) webosTimers.splice(index, 1)
+
+                applyWebosStyle()
+            }, delay)
+
+            webosTimers.push(timer)
+        })
     }
 
     function subtitleContainer() {
@@ -518,10 +660,45 @@
             if (showing) activateTrack(showing)
             else if (session.track && session.track.mode === 'hidden') renderCurrent(false)
             else deactivateTrack()
+
+            scanWebosSelection()
         }
         finally {
             session.scanning = false
         }
+    }
+
+    function scanWebosSelection() {
+        if (!session || !session.webosSubtitles) return
+
+        var selected = -999
+
+        for (var index = 0; index < session.webosSubtitles.length; index++) {
+            if (session.webosSubtitles[index].selected === true) {
+                selected = session.webosSubtitles[index].index
+                break
+            }
+        }
+
+        if (selected === session.webosSelectedSubtitle) return
+
+        session.webosSelectedSubtitle = selected
+        scheduleWebosStyle([650, 1500])
+    }
+
+    function onWebosSubtitles(event) {
+        if (!enabled() || !isTorrentPlayback(latestPlayerData)) return
+
+        var video = videoElement()
+
+        if (!session || session.video !== video) start(latestPlayerData)
+        if (!session) return
+
+        session.webosSubtitles = event && event.subs ? event.subs : []
+        session.webosSelectedSubtitle = null
+
+        persistWebosStyle(desiredWebosStyle())
+        scheduleWebosStyle([0, 700, 1600])
     }
 
     function bind(target, eventName, callback) {
@@ -553,6 +730,8 @@
     }
 
     function stop(restoreNative) {
+        clearWebosTimers()
+
         if (!session) {
             state.active = false
             return
@@ -578,7 +757,7 @@
 
         var video = videoElement()
 
-        if (!video || !video.textTracks) return
+        if (!video) return
 
         session = {
             video: video,
@@ -586,16 +765,27 @@
             lastText: null,
             scanning: false,
             listeners: [],
-            interval: null
+            interval: null,
+            webosSubtitles: null,
+            webosSelectedSubtitle: null
         }
 
         state.active = true
 
         bind(video, 'timeupdate', scanTracks)
         bind(video, 'seeking', scanTracks)
-        bind(video, 'seeked', scanTracks)
-        bind(video, 'loadedmetadata', scanTracks)
-        bind(video, 'loadeddata', scanTracks)
+        bind(video, 'seeked', function () {
+            scanTracks()
+            scheduleWebosStyle([350, 1200])
+        })
+        bind(video, 'loadedmetadata', function () {
+            scanTracks()
+            scheduleWebosStyle([0, 700])
+        })
+        bind(video, 'loadeddata', function () {
+            scanTracks()
+            scheduleWebosStyle([0, 700])
+        })
         bind(video.textTracks, 'change', scanTracks)
         bind(video.textTracks, 'addtrack', scanTracks)
         bind(video.textTracks, 'removetrack', scanTracks)
@@ -604,6 +794,7 @@
 
         setTimeout(scanTracks, 0)
         setTimeout(updateNativeCueStyle, 0)
+        scheduleWebosStyle([0, 700, 1600])
     }
 
     function updateNativeCueStyle() {
@@ -682,6 +873,7 @@
     state.enabled = enabled
     state.isTorrentPlayback = isTorrentPlayback
     state.scan = scanTracks
+    state.applyWebosStyle = applyWebosStyle
     state.stop = function () {
         stop(true)
     }
@@ -694,6 +886,10 @@
         })
     }
 
+    if (window.Lampa && Lampa.PlayerVideo && Lampa.PlayerVideo.listener) {
+        Lampa.PlayerVideo.listener.follow('webos_subs', onWebosSubtitles)
+    }
+
     if (window.Lampa && Lampa.Storage && Lampa.Storage.listener) {
         Lampa.Storage.listener.follow('change', function (event) {
             if (SUBTITLE_SETTINGS.indexOf(event.name) === -1) return
@@ -701,6 +897,8 @@
             setTimeout(function () {
                 updateNativeCueStyle()
                 renderCurrent(true)
+                persistWebosStyle(desiredWebosStyle())
+                scheduleWebosStyle([0, 700])
             }, 0)
         })
     }
@@ -721,10 +919,11 @@
     'use strict'
 
     var PLUGIN_NAME = 'Lampa English Tracks'
-    var PLUGIN_VERSION = '1.0.0'
+    var PLUGIN_VERSION = '1.1.0'
     var SETTING_ENABLED = 'english_tracks_enabled'
     var SETTING_REMEMBER = 'english_tracks_remember'
-    var PREFERENCES_KEY = 'english_tracks_preferences'
+    var PREFERENCES_KEY = 'english_tracks_preferences_v2'
+    var LEGACY_PREFERENCES_KEY = 'english_tracks_preferences'
     var MAX_PREFERENCES = 200
 
     if (window.LampaEnglishTracks) return
@@ -737,7 +936,8 @@
         audioSelections: 0,
         subtitleSelections: 0,
         savedPreferences: 0,
-        restoredPreferences: 0
+        restoredPreferences: 0,
+        playerParamSyncs: 0
     }
 
     window.LampaEnglishTracks = state
@@ -1053,6 +1253,58 @@
         catch (error) {}
     }
 
+    function runOnSelect(item) {
+        try {
+            if (item && typeof item.onSelect === 'function') item.onSelect(item)
+        }
+        catch (error) {}
+    }
+
+    function syncPlayerParams(kind, item, index) {
+        try {
+            if (!window.Lampa || !Lampa.PlayerVideo) return
+
+            var params = typeof Lampa.PlayerVideo.saveParams === 'function'
+                ? Lampa.PlayerVideo.saveParams() || {}
+                : {}
+
+            if (kind === 'audio') params.track = index
+            else if (kind === 'subtitles') {
+                params.sub = item && item.index !== undefined ? item.index : index
+            }
+
+            if (typeof Lampa.PlayerVideo.setParams === 'function') {
+                Lampa.PlayerVideo.setParams(params)
+            }
+
+            state.playerParamSyncs++
+        }
+        catch (error) {}
+    }
+
+    function markApplied(kind, value) {
+        if (!current || !value) return
+
+        current[kind + 'Applied'] = JSON.stringify(value)
+    }
+
+    function captureChanged(kind, value) {
+        if (!current || !value) return
+
+        var key = kind + 'Applied'
+        var serialized = JSON.stringify(value)
+
+        if (typeof current[key] === 'undefined') {
+            current[key] = serialized
+            return
+        }
+
+        if (current[key] === serialized) return
+
+        savePreference(kind, value)
+        current[key] = serialized
+    }
+
     function disableAudio(items) {
         items.forEach(function (item) {
             setProperty(item, 'enabled', false)
@@ -1087,12 +1339,19 @@
 
         if (index < 0 || !items[index]) return
 
-        disableAudio(items)
-        setProperty(items[index], 'enabled', true)
-        setProperty(items[index], 'selected', true)
+        var activeIndex = selectedAudio(items)
 
-        state.audioSelections++
+        if (activeIndex !== index) {
+            disableAudio(items)
+            setProperty(items[index], 'enabled', true)
+            setProperty(items[index], 'selected', true)
+            runOnSelect(items[index])
+            state.audioSelections++
+        }
+
         state.lastAudio = descriptor(items[index], index, 'audio')
+        markApplied('audio', compactDescriptor(items[index], index, 'audio'))
+        syncPlayerParams('audio', items[index], index)
     }
 
     function applySubtitles(items) {
@@ -1102,10 +1361,12 @@
         var index = preferenceCandidate(items, 'subtitles', saved)
 
         if (index === -2) {
-            disableSubtitles(items)
+            if (selectedSubtitles(items) !== -2) disableSubtitles(items)
             showSubtitles(false)
             state.restoredPreferences++
             state.lastSubtitles = {off: true}
+            markApplied('subtitles', {off: true})
+            syncPlayerParams('subtitles', {index: -1}, -1)
             return
         }
 
@@ -1114,13 +1375,21 @@
 
         if (index < 0 || !items[index]) return
 
-        disableSubtitles(items)
-        setProperty(items[index], 'mode', 'showing')
-        setProperty(items[index], 'selected', true)
+        var activeIndex = selectedSubtitles(items)
+
+        if (activeIndex !== index) {
+            disableSubtitles(items)
+            setProperty(items[index], 'mode', 'showing')
+            setProperty(items[index], 'selected', true)
+            runOnSelect(items[index])
+            state.subtitleSelections++
+        }
+
         showSubtitles(true)
 
-        state.subtitleSelections++
         state.lastSubtitles = descriptor(items[index], index, 'subtitles')
+        markApplied('subtitles', compactDescriptor(items[index], index, 'subtitles'))
+        syncPlayerParams('subtitles', items[index], index)
     }
 
     function trimPreferences(preferences) {
@@ -1198,16 +1467,16 @@
             var audioIndex = selectedAudio(current.tracks)
 
             if (audioIndex >= 0) {
-                savePreference('audio', compactDescriptor(current.tracks[audioIndex], audioIndex, 'audio'))
+                captureChanged('audio', compactDescriptor(current.tracks[audioIndex], audioIndex, 'audio'))
             }
         }
 
         if (current.subtitles && current.subtitles.length) {
             var subtitleIndex = selectedSubtitles(current.subtitles)
 
-            if (subtitleIndex === -2) savePreference('subtitles', {off: true})
+            if (subtitleIndex === -2) captureChanged('subtitles', {off: true})
             else if (subtitleIndex >= 0) {
-                savePreference('subtitles', compactDescriptor(current.subtitles[subtitleIndex], subtitleIndex, 'subtitles'))
+                captureChanged('subtitles', compactDescriptor(current.subtitles[subtitleIndex], subtitleIndex, 'subtitles'))
             }
         }
     }
@@ -1270,11 +1539,15 @@
 
     function clearPreferences() {
         storageSet(PREFERENCES_KEY, {})
+        storageSet(LEGACY_PREFERENCES_KEY, {})
 
         if (current) {
-            current.lastAudio = null
-            current.lastSubtitles = null
+            delete current.audioApplied
+            delete current.subtitlesApplied
         }
+
+        state.lastAudio = null
+        state.lastSubtitles = null
 
         if (window.Lampa && Lampa.Noty) Lampa.Noty.show('Сохранённые дорожки очищены')
     }
@@ -1340,6 +1613,8 @@
 
         Lampa.PlayerVideo.listener.follow('tracks', onTracks)
         Lampa.PlayerVideo.listener.follow('subs', onSubtitles)
+        Lampa.PlayerVideo.listener.follow('webos_tracks', onTracks)
+        Lampa.PlayerVideo.listener.follow('webos_subs', onSubtitles)
         Lampa.PlayerVideo.listener.follow('destroy', onVideoDestroy)
 
         return true
@@ -1352,8 +1627,6 @@
     state.preferences = loadPreferences
 
     installHooks()
-
-    setInterval(captureSelections, 1000)
 
     if (window.appready) installSettings()
     else if (window.Lampa && Lampa.Listener && typeof Lampa.Listener.follow === 'function') {
