@@ -2,7 +2,7 @@
     'use strict'
 
     var PLUGIN_NAME = 'Lampa English Tracks'
-    var PLUGIN_VERSION = '1.1.0'
+    var PLUGIN_VERSION = '1.1.1'
     var SETTING_ENABLED = 'english_tracks_enabled'
     var SETTING_REMEMBER = 'english_tracks_remember'
     var PREFERENCES_KEY = 'english_tracks_preferences_v2'
@@ -605,6 +605,17 @@
         applySubtitles(current.subtitles)
     }
 
+    function onWebosSubtitles(event) {
+        try {
+            if (window.LampaImprovedSubtitles &&
+                typeof window.LampaImprovedSubtitles.handlesPlayback === 'function' &&
+                window.LampaImprovedSubtitles.handlesPlayback()) return
+        }
+        catch (error) {}
+
+        onSubtitles(event)
+    }
+
     function onVideoDestroy() {
         captureSelections()
 
@@ -697,7 +708,7 @@
         Lampa.PlayerVideo.listener.follow('tracks', onTracks)
         Lampa.PlayerVideo.listener.follow('subs', onSubtitles)
         Lampa.PlayerVideo.listener.follow('webos_tracks', onTracks)
-        Lampa.PlayerVideo.listener.follow('webos_subs', onSubtitles)
+        Lampa.PlayerVideo.listener.follow('webos_subs', onWebosSubtitles)
         Lampa.PlayerVideo.listener.follow('destroy', onVideoDestroy)
 
         return true

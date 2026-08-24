@@ -3,8 +3,8 @@
 Исходники пользовательского bundle для Lampa хранятся отдельно:
 
 - `adblock/plugin.js` — блокировка preroll и player-banner;
-- `torrserver-subtitles/plugin.js` — штатное оформление Lampa для встроенных
-  субтитров TorrServer;
+- `torrserver-subtitles/plugin.js` — Range-извлечение встроенных текстовых
+  дорожек TorrServer и их отрисовка штатным DOM-слоем Lampa;
 - `english-tracks/plugin.js` — автоматический выбор английской аудиодорожки и
   полных английских субтитров.
 
