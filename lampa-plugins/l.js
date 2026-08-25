@@ -5094,12 +5094,13 @@ var MatroskaSubtitles;
     "use strict";
     var LIBASS_SUBS_VERSION = "1.1.7";
     var PLUGIN_STATE = {
-        version: LIBASS_SUBS_VERSION + "-darkworon.2",
+        version: LIBASS_SUBS_VERSION + "-darkworon.3",
         upstreamCommit: "e3fc07a6cd05ba33ebf769f89965712527b2fd39",
         active: false,
         embeddedTracks: 0,
         nativeTracks: 0,
-        nativeDisabled: false
+        nativeDisabled: false,
+        hdr: false
     };
     if (typeof window !== "undefined") {
         window.LampaImprovedSubtitles = PLUGIN_STATE;
@@ -5215,6 +5216,82 @@ var MatroskaSubtitles;
             hud("tracks-end parse err: " + e.message);
         }
         return -1;
+    }
+    function ebmlElement(buf, pos, limit) {
+        if (pos < 0 || pos >= limit) return null;
+        var id = readVint(buf, pos, true);
+        if (!id.len || id.len > 4 || pos + id.len >= limit) return null;
+        var size = readVint(buf, pos + id.len, false);
+        if (!size.len || size.len > 8) return null;
+        var data = pos + id.len + size.len;
+        var end = data + size.val;
+        if (!isFinite(end) || end < data) end = limit;
+        return {
+            id: id.val,
+            data: data,
+            end: Math.min(end, limit)
+        };
+    }
+    function ebmlUInt(buf, start, end) {
+        var value = 0;
+        for (var i = start; i < end; i++) value = value * 256 + buf[i];
+        return value;
+    }
+    function ebmlText(buf, start, end) {
+        try {
+            return new TextDecoder("utf-8").decode(buf.subarray(start, end)).replace(/\0+$/, "").trim();
+        } catch (e) {
+            var value = "";
+            for (var i = start; i < end; i++) value += String.fromCharCode(buf[i]);
+            try {
+                return decodeURIComponent(escape(value)).replace(/\0+$/, "").trim();
+            } catch (e2) {
+                return value.replace(/\0+$/, "").trim();
+            }
+        }
+    }
+    function parseTrackMetadata(buf) {
+        var result = {};
+        try {
+            var pos = 0;
+            var ebml = ebmlElement(buf, pos, buf.length);
+            if (!ebml) return result;
+            pos = ebml.end;
+            var segment = ebmlElement(buf, pos, buf.length);
+            if (!segment || segment.id !== 408125543) return result;
+            pos = segment.data;
+            while (pos < segment.end) {
+                var child = ebmlElement(buf, pos, segment.end);
+                if (!child) break;
+                if (child.id === 374648427) {
+                    var tp = child.data;
+                    while (tp < child.end) {
+                        var entry = ebmlElement(buf, tp, child.end);
+                        if (!entry) break;
+                        if (entry.id === 174) {
+                            var meta = {}, ep = entry.data;
+                            while (ep < entry.end) {
+                                var field = ebmlElement(buf, ep, entry.end);
+                                if (!field) break;
+                                if (field.id === 215) meta.number = ebmlUInt(buf, field.data, field.end);
+                                if (field.id === 131) meta.trackType = ebmlUInt(buf, field.data, field.end);
+                                if (field.id === 21358) meta.name = ebmlText(buf, field.data, field.end);
+                                if (field.id === 2274716) meta.language = ebmlText(buf, field.data, field.end);
+                                if (field.id === 2274717) meta.languageIETF = ebmlText(buf, field.data, field.end);
+                                ep = field.end;
+                            }
+                            if (meta.number && meta.trackType === 17) result[meta.number] = meta;
+                        }
+                        tp = entry.end;
+                    }
+                    break;
+                }
+                pos = child.end;
+            }
+        } catch (e) {
+            hud("track metadata parse err: " + e.message);
+        }
+        return result;
     }
     function indexOfCluster(buf, from) {
         for (var i = from || 0; i < buf.length - 4; i++) if (buf[i] === CLUSTER_ID[0] && buf[i + 1] === CLUSTER_ID[1] && buf[i + 2] === CLUSTER_ID[2] && buf[i + 3] === CLUSTER_ID[3]) return i;
@@ -5577,6 +5654,7 @@ var MatroskaSubtitles;
                 num: trackId,
                 type: fmt,
                 lang: lang,
+                languageDefaulted: !lang,
                 isAss: false,
                 header: FALLBACK_HEADER,
                 cues: []
@@ -5776,7 +5854,8 @@ var MatroskaSubtitles;
         blue: "#0000ff",
         magenta: "#ff00ff",
         red: "#ff0000",
-        black: "#000000"
+        black: "#000000",
+        hdrsoft: "#b8b8b8"
     };
     var OUR_EDGES = {
         none: "none",
@@ -5817,7 +5896,9 @@ var MatroskaSubtitles;
         var lampaSize = S.field("subtitles_size");
         var lampaStroke = S.field("subtitles_stroke");
         el.style.fontSize = OUR_SIZES[ownSize] || primary && (computed && computed.fontSize || OUR_SIZES[lampaSize]) || "1.5em";
-        el.style.color = OUR_COLORS[ownColor] || primary && computed && computed.color || (primary ? "#ffffff" : "#d3d3d3");
+        var hdr = primary && isHdrPlayback();
+        if (primary) PLUGIN_STATE.hdr = hdr;
+        el.style.color = OUR_COLORS[ownColor] || primary && (hdr ? OUR_COLORS.hdrsoft : computed && computed.color) || "#d3d3d3";
         el.style.textShadow = OUR_EDGES[ownEdge] || primary && computed && computed.textShadow || (primary && lampaStroke ? OUR_EDGES.uniform : OUR_EDGES.dropshadow);
         el.style.fontFamily = OUR_FONTS[ownFont] || primary && computed && computed.fontFamily || "";
         el.style.fontWeight = ownWeight === "bold" ? "bold" : primary && computed && computed.fontWeight || "normal";
@@ -5828,19 +5909,16 @@ var MatroskaSubtitles;
         }
         var rawV = S.field(p + "_vpos");
         var v = parseInt(rawV, 10);
-        var customV = v >= 1 && v <= 40;
-        if (!customV) v = p === "libass2" ? 14 : 5;
+        var customV = rawV !== undefined && rawV !== null && rawV !== "" && v >= -5 && v <= 40;
+        if (!customV) v = p === "libass2" ? 14 : -3;
         var anchor = S.field(p + "_anchor");
         var stack = p === "libass2" && anchor === "stack";
-        if (primary && !customV && !anchor) {
-            el.style.removeProperty("top");
-            el.style.removeProperty("bottom");
-        } else if (anchor === "top") {
+        if (anchor === "top") {
             el.style.top = v + "%";
             el.style.bottom = "auto";
         } else if (p === "libass2" && anchor === "stackfix" && subBox) {
             var v1 = parseInt(S.field("libass_vpos"), 10);
-            if (!(v1 >= 1 && v1 <= 40)) v1 = 5;
+            if (!(v1 >= -5 && v1 <= 40)) v1 = -3;
             var fs = parseFloat(getComputedStyle(subBox).fontSize) || 24;
             el.style.bottom = "calc(" + v1 + "% + " + Math.round(fs * 2.6) + "px)";
             el.style.top = "auto";
@@ -6158,16 +6236,217 @@ var MatroskaSubtitles;
             startTimeLoop();
         }
     }
-    function trackLabel(td) {
-        if (td.ext) return esc(td.lang) + (td.cues.length ? "  (" + td.cues.length + ")" : extLoading[td.url] ? "  (loading…)" : "");
-        return "Track " + td.num + "  " + esc(td.lang || td.type) + "  (" + td.cues.length + ")";
+    var LANGUAGE_ALIASES = {
+        en: "eng",
+        eng: "eng",
+        english: "eng",
+        ru: "rus",
+        rus: "rus",
+        russian: "rus",
+        uk: "ukr",
+        ua: "ukr",
+        ukr: "ukr",
+        ukrainian: "ukr",
+        de: "deu",
+        deu: "deu",
+        ger: "deu",
+        german: "deu",
+        fr: "fra",
+        fra: "fra",
+        fre: "fra",
+        french: "fra",
+        es: "spa",
+        spa: "spa",
+        spanish: "spa",
+        it: "ita",
+        ita: "ita",
+        italian: "ita",
+        pt: "por",
+        por: "por",
+        portuguese: "por",
+        pl: "pol",
+        pol: "pol",
+        polish: "pol",
+        tr: "tur",
+        tur: "tur",
+        turkish: "tur",
+        ja: "jpn",
+        jpn: "jpn",
+        japanese: "jpn",
+        ko: "kor",
+        kor: "kor",
+        korean: "kor",
+        zh: "zho",
+        zho: "zho",
+        chi: "zho",
+        chinese: "zho"
+    };
+    var SUBTITLE_CODECS = {
+        utf8: 1,
+        srt: 1,
+        subrip: 1,
+        ass: 1,
+        ssa: 1,
+        webvtt: 1,
+        vtt: 1,
+        mov_text: 1,
+        tx3g: 1,
+        text: 1,
+        unknown: 1,
+        und: 1,
+        zxx: 1,
+        "(null)": 1
+    };
+    function cleanMeta(value) {
+        value = String(value == null ? "" : value).replace(/\0/g, "").trim();
+        return value === "(null)" ? "" : value;
+    }
+    function languageCode(value) {
+        var source = cleanMeta(value).toLowerCase().replace(/_/g, "-");
+        if (!source || SUBTITLE_CODECS[source]) return "";
+        if (LANGUAGE_ALIASES[source]) return LANGUAGE_ALIASES[source];
+        var base = source.split("-")[0];
+        if (LANGUAGE_ALIASES[base]) return LANGUAGE_ALIASES[base];
+        return /^[a-z]{3}$/.test(base) && !SUBTITLE_CODECS[base] ? base : "";
+    }
+    function inferredLanguage(value) {
+        var source = cleanMeta(value).toLowerCase();
+        var names = Object.keys(LANGUAGE_ALIASES);
+        for (var i = 0; i < names.length; i++) {
+            var name = names[i];
+            if (name.length > 2 && new RegExp("(?:^|[^a-z])" + name + "(?:$|[^a-z])", "i").test(source)) return LANGUAGE_ALIASES[name];
+        }
+        return "";
+    }
+    function cleanTrackName(value, language) {
+        var name = cleanMeta(value).replace(/^\s*(?:track\s*)?\d+\s*(?:[./|:-]\s*)?/i, "");
+        if (/^(?:utf8|srt|subrip|ass|ssa|webvtt|vtt|mov_text|tx3g|text)(?:\s*\(\d+\))?$/i.test(name)) return "";
+        if (language) {
+            var prefix = new RegExp("^(?:" + language + "|" + language.slice(0, 2) + ")\\s*(?:/|$)\\s*", "i");
+            name = name.replace(prefix, "");
+        }
+        return languageCode(name) === language ? "" : name;
+    }
+    function itemMetadata(item) {
+        item = item || {};
+        var tags = item.tags || {};
+        var language = languageCode(item.language || item.lang || item.srclang || tags.language || tags.LANGUAGE);
+        var label = item.label || item.name || tags.title || tags.TITLE || tags.handler_name || tags.HANDLER_NAME || item.title;
+        return {
+            language: language,
+            label: cleanTrackName(label, language)
+        };
+    }
+    function mergeMetadata(target, source) {
+        if (!source) return target;
+        if (!target.language && source.language) target.language = source.language;
+        if (!target.label && source.label) target.label = source.label;
+        return target;
+    }
+    function playdata() {
+        try {
+            return window.Lampa && Lampa.Player && Lampa.Player.playdata ? Lampa.Player.playdata() || {} : {};
+        } catch (e) {
+            return {};
+        }
+    }
+    function isHdrPlayback() {
+        var data = playdata();
+        if (data.hdr === true || /^(?:hdr|hdr10|hlg|dolby[ _-]?vision)$/i.test(cleanMeta(data.hdr))) return true;
+        var streams = data.ffprobe;
+        if (!Array.isArray(streams)) return false;
+        var videoStream = streams.filter(function(stream) {
+            return stream && stream.codec_type === "video";
+        })[0];
+        if (!videoStream) return false;
+        var signal = "";
+        try {
+            signal = JSON.stringify(videoStream);
+        } catch (e) {
+            signal = [ videoStream.color_transfer, videoStream.color_primaries, videoStream.profile ].join(" ");
+        }
+        return /smpte2084|arib-std-b67|\bhlg\b|\bhdr10\b|dolby[ _-]?vision|dovi|dvhe|dvh1/i.test(signal);
+    }
+    function ffprobeMetadata(td, ordinal) {
+        var streams = playdata().ffprobe;
+        if (!Array.isArray(streams)) return null;
+        var subs = streams.filter(function(stream) {
+            return stream && stream.codec_type === "subtitle";
+        });
+        var exact = subs.filter(function(stream) {
+            return parseInt(stream.index, 10) + 1 === td.num;
+        })[0];
+        return itemMetadata(exact || subs[ordinal - 1]);
+    }
+    function nativeTrackNumber(item) {
+        item = item || {};
+        var extra = item.extra || {};
+        var value = extra.track_num;
+        if (value === undefined) value = item.track_num;
+        if (value === undefined) value = item.trackNumber;
+        if (value === undefined) value = item.trackId;
+        value = parseInt(value, 10);
+        return isNaN(value) ? -1 : value;
+    }
+    function nativeMetadata(td, ordinal) {
+        var subs = nativeSubs.filter(function(item) {
+            return item && item.index !== -1;
+        });
+        var exact = subs.filter(function(item) {
+            return nativeTrackNumber(item) === td.num;
+        })[0];
+        return itemMetadata(exact || subs[ordinal - 1]);
+    }
+    function translatedMetadata(td, ordinal) {
+        var data = playdata();
+        var translated = data.translate && data.translate.subs;
+        if (!Array.isArray(translated)) return null;
+        var native = nativeSubs.filter(function(item) {
+            return item && item.index !== -1;
+        })[ordinal - 1];
+        var index = native ? nativeTrackNumber(native) : -1;
+        if (index < 0 && native && native.index !== undefined) index = parseInt(native.index, 10);
+        return itemMetadata(translated[index] || translated[ordinal - 1]);
+    }
+    function trackMetadata(td, ordinal) {
+        if (td.ext) {
+            var external = itemMetadata(lampaSubs[td.num - EXT_BASE]);
+            if (!external.language) external.language = languageCode(td.lang) || inferredLanguage(td.lang);
+            if (!external.label) external.label = cleanTrackName(td.lang, external.language);
+            return external;
+        }
+        var directLanguage = td.languageDefaulted ? "" : languageCode(td.lang);
+        var result = {
+            language: directLanguage,
+            label: cleanTrackName(td.name, directLanguage)
+        };
+        mergeMetadata(result, ffprobeMetadata(td, ordinal));
+        mergeMetadata(result, translatedMetadata(td, ordinal));
+        mergeMetadata(result, nativeMetadata(td, ordinal));
+        if (!result.language) result.language = inferredLanguage(result.label);
+        if (!result.language && td.languageDefaulted) result.language = "eng";
+        result.label = cleanTrackName(result.label, result.language);
+        return result;
+    }
+    function trackOrdinal(td) {
+        var nums = Object.keys(tracks).map(Number).sort(function(a, b) {
+            return a - b;
+        });
+        return nums.indexOf(td.num) + 1;
+    }
+    function trackLabel(td, ordinal) {
+        var meta = trackMetadata(td, ordinal);
+        var parts = [ String(ordinal), meta.language || "unknown" ];
+        if (meta.label) parts.push(meta.label);
+        if (td.ext && extLoading[td.url]) parts.push("loading...");
+        return parts.map(esc).join(" / ");
     }
     function renderTrack(v, num) {
         if (!tracks[num]) return;
         disableNativeSubtitles();
         curTrack = num;
         PLUGIN_STATE.selectedTrack = num;
-        PLUGIN_STATE.selectedLanguage = tracks[num].lang || "";
+        PLUGIN_STATE.selectedLanguage = trackMetadata(tracks[num], trackOrdinal(tracks[num])).language;
         startTimeLoop();
     }
     function trackKey() {
@@ -6199,17 +6478,17 @@ var MatroskaSubtitles;
             if (tracks[curTrack]) renderTrack(v, curTrack);
             return;
         }
-        if (tracks[curTrack] && tracks[curTrack].cues.length) return;
         var best = -1, bc = 0, englishBest = -1, englishCount = 0;
         var englishSetting = !window.Lampa || !Lampa.Storage ? true : Lampa.Storage.get("english_tracks_enabled", "true");
         var preferEnglish = englishSetting !== false && englishSetting !== "false" && englishSetting !== 0 && englishSetting !== "0";
         for (var n in tracks) {
             var count = tracks[n].cues.length;
+            var ordinal = trackOrdinal(tracks[n]);
             if (count > bc) {
                 bc = count;
                 best = +n;
             }
-            if (preferEnglish && count > englishCount && /^(?:en|eng|english)$/i.test(String(tracks[n].lang || "").trim())) {
+            if (preferEnglish && count > englishCount && trackMetadata(tracks[n], ordinal).language === "eng") {
                 englishCount = count;
                 englishBest = +n;
             }
@@ -6219,6 +6498,7 @@ var MatroskaSubtitles;
             bc = englishCount;
         }
         if (best < 0) return;
+        if (best === curTrack && tracks[curTrack] && tracks[curTrack].cues.length) return;
         if (best !== curTrack) hud("auto: track " + best + " (" + bc + " cues)");
         renderTrack(v, best);
     }
@@ -6229,18 +6509,31 @@ var MatroskaSubtitles;
             autoPick(v);
         }, 500);
     }
-    function showPicker(v) {
+    function showPicker(v, returnTo) {
         if (!window.Lampa || !Lampa.Select) return;
+        if (!returnTo) {
+            var enabled = null;
+            try {
+                enabled = Lampa.Controller.enabled && Lampa.Controller.enabled();
+            } catch (e) {}
+            returnTo = {
+                controller: enabled && enabled.name || "player_panel",
+                focus: document.querySelector(".player-panel__subs")
+            };
+        }
         var list = Object.keys(tracks).map(function(n) {
             return tracks[n];
         }).sort(function(a, b) {
             return a.num - b.num;
         });
-        var items = list.map(function(td) {
+        var items = list.map(function(td, index) {
             return {
-                title: trackLabel(td) + (td.num === curTrack ? "  ✓" : ""),
+                title: trackLabel(td, index + 1) + (td.num === curTrack ? "  ✓" : ""),
                 num: td.num
             };
+        });
+        PLUGIN_STATE.trackLabels = items.map(function(item) {
+            return item.title;
         });
         items.push({
             title: "Off",
@@ -6258,6 +6551,8 @@ var MatroskaSubtitles;
             nano: "40%"
         };
         var COLORS = {
+            auto: "Auto (SDR white / HDR soft)",
+            hdrsoft: "HDR soft",
             white: "White",
             cream: "Cream",
             lightgray: "Light gray",
@@ -6301,8 +6596,15 @@ var MatroskaSubtitles;
             normal: "Normal",
             bold: "Bold"
         };
-        var VPOS = {};
-        for (var vp = 1; vp <= 15; vp++) VPOS[String(vp)] = vp + "%" + (vp === 5 ? " (default)" : "");
+        var VPOS = {
+            "-5": "5% lower",
+            "-4": "4% lower",
+            "-3": "3% lower",
+            "-2": "2% lower",
+            "-1": "1% lower",
+            0: "Standard (online_mod)"
+        };
+        for (var vp = 1; vp <= 15; vp++) VPOS[String(vp)] = vp + "% higher";
         VPOS["20"] = "20%";
         var ANCHORS = {
             bottom: "Bottom",
@@ -6321,7 +6623,14 @@ var MatroskaSubtitles;
             settings: true
         });
         function back() {
-            Lampa.Controller.toggle(Lampa.Platform.screen("mobile") ? "player" : "player_panel");
+            var mobile = Lampa.Platform.screen("mobile");
+            var controller = mobile ? "player" : returnTo.controller || "player_panel";
+            Lampa.Controller.toggle(controller);
+            if (!mobile && controller === "player_panel" && returnTo.focus && returnTo.focus.isConnected && Lampa.Controller.focus) {
+                try {
+                    Lampa.Controller.focus(returnTo.focus);
+                } catch (e) {}
+            }
         }
         function showSettings(p, onDone) {
             p = p || "libass";
@@ -6338,7 +6647,7 @@ var MatroskaSubtitles;
                 });
             }
             opt("Size", "size", SIZES, "60%");
-            opt("Color", "color", COLORS, "Light gray");
+            opt("Color", "color", COLORS, "Auto (SDR white / HDR soft)");
             opt("Edge", "edge", EDGES, "Drop shadow");
             opt("Font", "font", FONTS, "Default");
             opt("Weight", "weight", WEIGHTS, "Normal");
@@ -6348,7 +6657,7 @@ var MatroskaSubtitles;
                 stack: "Above first (follows)",
                 stackfix: "Above first (fixed slot)"
             } : ANCHORS, "Bottom");
-            opt("Position", "vpos", VPOS, p === "libass2" ? "14%" : "5% (default)");
+            opt("Position", "vpos", VPOS, p === "libass2" ? "14% higher" : "3% lower (default)");
             var SHIFTS = {
                 "-10": "-10s",
                 "-5": "-5s",
@@ -6400,7 +6709,7 @@ var MatroskaSubtitles;
                 title: (p === "libass2" ? "Second subtitle settings" : "Subtitle settings") + " · v" + LIBASS_SUBS_VERSION,
                 items: sItems,
                 onBack: onDone || function() {
-                    showPicker(v);
+                    showPicker(v, returnTo);
                 },
                 onSelect: function(a) {
                     if (a.dbg) {
@@ -6432,9 +6741,9 @@ var MatroskaSubtitles;
             }).sort(function(a, b) {
                 return a.num - b.num;
             });
-            var sItems = list.map(function(td) {
+            var sItems = list.map(function(td, index) {
                 return {
-                    title: trackLabel(td) + (td.num === curTrack2 ? "  ✓" : ""),
+                    title: trackLabel(td, index + 1) + (td.num === curTrack2 ? "  ✓" : ""),
                     num: td.num
                 };
             });
@@ -6450,7 +6759,7 @@ var MatroskaSubtitles;
                 title: "Second subtitle",
                 items: sItems,
                 onBack: function() {
-                    showPicker(v);
+                    showPicker(v, returnTo);
                 },
                 onSelect: function(a) {
                     if (a.settings) {
@@ -6496,7 +6805,7 @@ var MatroskaSubtitles;
                             };
                         }),
                         onBack: function() {
-                            showPicker(v);
+                            showPicker(v, returnTo);
                         },
                         onSelect: function(o) {
                             try {
@@ -6586,7 +6895,10 @@ var MatroskaSubtitles;
             return h.handler;
         });
         $(btn).off("hover:enter").on("hover:enter", function(e) {
-            if (active()) return showPicker(video());
+            if (active()) return showPicker(video(), {
+                controller: "player_panel",
+                focus: btn
+            });
             for (var i = 0; i < original.length; i++) original[i].call(btn, e);
         });
         hud("subs button hooked (open picker there)");
@@ -6668,6 +6980,7 @@ var MatroskaSubtitles;
         scheduleUpdate(video());
     }
     function parseHeaderTracks(hb) {
+        var rawTracks = parseTrackMetadata(hb);
         var p = new MatroskaSubtitles.SubtitleParser, announced = false;
         p.once("tracks", function(ts) {
             announced = true;
@@ -6675,10 +6988,14 @@ var MatroskaSubtitles;
                 return x.number + ":" + x.type;
             }).join(",") : "NONE"));
             ts.forEach(function(t) {
+                var raw = rawTracks[t.number] || {};
+                var language = cleanMeta(raw.languageIETF || raw.language || t.language);
                 tracks[t.number] = {
                     num: t.number,
                     type: t.type,
-                    lang: t.language,
+                    lang: language,
+                    name: cleanMeta(t.name || raw.name),
+                    languageDefaulted: !language,
                     isAss: !!SSA[t.type],
                     header: SSA[t.type] && t.header ? t.header : FALLBACK_HEADER,
                     cues: []
@@ -7124,9 +7441,79 @@ var MatroskaSubtitles;
         installExt();
         restoreExt();
     }
+    var playerSettingsInstalled = false;
+    function installPlayerSettings() {
+        if (playerSettingsInstalled || !window.Lampa || !Lampa.SettingsApi) return false;
+        Lampa.SettingsApi.addParam({
+            component: "player",
+            param: {
+                type: "title"
+            },
+            field: {
+                name: "Субтитры TorrServer"
+            }
+        });
+        Lampa.SettingsApi.addParam({
+            component: "player",
+            param: {
+                name: "libass_color",
+                type: "select",
+                values: {
+                    auto: "Авто: белый SDR / мягкий HDR",
+                    hdrsoft: "Мягкий белый HDR",
+                    lightgray: "Светло-серый",
+                    silver: "Серый",
+                    white: "Белый",
+                    softyellow: "Мягкий жёлтый",
+                    yellow: "Жёлтый"
+                },
+                default: "auto"
+            },
+            field: {
+                name: "Цвет",
+                description: "Авто приглушает белый для HDR10, HLG и Dolby Vision"
+            },
+            onChange: applyOurStyle
+        });
+        Lampa.SettingsApi.addParam({
+            component: "player",
+            param: {
+                name: "libass_vpos",
+                type: "select",
+                values: {
+                    "-5": "Ниже на 5%",
+                    "-4": "Ниже на 4%",
+                    "-3": "Ниже на 3%",
+                    "-2": "Ниже на 2%",
+                    "-1": "Ниже на 1%",
+                    0: "Стандартная позиция Lampa",
+                    1: "Выше на 1%",
+                    2: "Выше на 2%",
+                    3: "Выше на 3%",
+                    5: "Выше на 5%",
+                    10: "Выше на 10%",
+                    15: "Выше на 15%",
+                    20: "Выше на 20%"
+                },
+                default: "-3"
+            },
+            field: {
+                name: "Вертикальная позиция",
+                description: "Положение встроенных субтитров TorrServer"
+            },
+            onChange: applyOurStyle
+        });
+        playerSettingsInstalled = true;
+        return true;
+    }
     function patch() {
         if (!window.Lampa) return setTimeout(patch, 200);
         hud("loaded. mksubs=" + !!window.MatroskaSubtitles);
+        if (window.appready) installPlayerSettings(); else if (Lampa.Listener && Lampa.Listener.follow) {
+            Lampa.Listener.follow("app", function(event) {
+                if (event.type === "ready") installPlayerSettings();
+            });
+        }
         if (Lampa.Select && Lampa.Select.show && !Lampa.Select.__libass) {
             var origShow = Lampa.Select.show;
             Lampa.Select.__libass = true;
@@ -7151,6 +7538,7 @@ var MatroskaSubtitles;
                 PLUGIN_STATE.nativeTracks = nativeSubs.length;
                 if (haveTracks || curTrack >= 0) disableNativeSubtitles();
                 hud("native subs: " + nativeSubs.length);
+                if (haveTracks) scheduleUpdate(video());
             });
             // the player's own subtitle list arrives with the item, before the
             // <video> gets its src; it is dropped with the player, not per src

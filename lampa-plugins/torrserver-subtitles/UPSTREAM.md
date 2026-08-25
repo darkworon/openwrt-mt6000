@@ -20,4 +20,7 @@ its license is preserved in `LICENSE-matroska-subtitles`.
 - Normalize embedded ASS font, size, and color to Lampa's appearance settings.
 - Disable the native embedded subtitle track while the DOM renderer is active.
 - Integrate automatic English selection with the local English Tracks plugin.
+- Resolve track language and labels from Matroska, ffprobe, and webOS metadata.
+- Restore player-panel focus after closing the subtitle picker.
+- Add player settings for vertical position and SDR/HDR-aware subtitle color.
 - Preserve external online-source handling by leaving `online_mod.js` untouched.

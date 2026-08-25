@@ -4,7 +4,8 @@
 
 - `adblock/plugin.js` — блокировка preroll и player-banner;
 - `torrserver-subtitles/plugin.js` — Range-извлечение встроенных текстовых
-  дорожек TorrServer и их отрисовка штатным DOM-слоем Lampa;
+  дорожек TorrServer, их отрисовка штатным DOM-слоем Lampa и настройки
+  позиции/SDR-HDR цвета в разделе плеера;
 - `english-tracks/plugin.js` — автоматический выбор английской аудиодорожки и
   полных английских субтитров.
 
