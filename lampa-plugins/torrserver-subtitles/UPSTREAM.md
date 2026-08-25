@@ -22,5 +22,7 @@ its license is preserved in `LICENSE-matroska-subtitles`.
 - Integrate automatic English selection with the local English Tracks plugin.
 - Resolve track language and labels from Matroska, ffprobe, and webOS metadata.
 - Restore player-panel focus after closing the subtitle picker.
-- Add player settings for vertical position and SDR/HDR-aware subtitle color.
+- Add in-player and global settings for vertical position, outline, and
+  SDR/HDR-aware subtitle color.
+- Detect HDR from ffprobe, playback metadata, and TorrServer file names.
 - Preserve external online-source handling by leaving `online_mod.js` untouched.

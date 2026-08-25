@@ -4831,13 +4831,14 @@ var MatroskaSubtitles;
     "use strict";
     var LIBASS_SUBS_VERSION = "1.1.7";
     var PLUGIN_STATE = {
-        version: LIBASS_SUBS_VERSION + "-darkworon.3",
+        version: LIBASS_SUBS_VERSION + "-darkworon.4",
         upstreamCommit: "e3fc07a6cd05ba33ebf769f89965712527b2fd39",
         active: false,
         embeddedTracks: 0,
         nativeTracks: 0,
         nativeDisabled: false,
-        hdr: false
+        hdr: false,
+        hdrSource: ""
     };
     if (typeof window !== "undefined") {
         window.LampaImprovedSubtitles = PLUGIN_STATE;
@@ -5628,6 +5629,7 @@ var MatroskaSubtitles;
         var ownSize = S.field(p + "_size");
         var ownColor = S.field(p + "_color");
         var ownEdge = S.field(p + "_edge");
+        var customEdge = ownEdge && ownEdge !== "default";
         var ownFont = S.field(p + "_font");
         var ownWeight = S.field(p + "_weight");
         var lampaSize = S.field("subtitles_size");
@@ -5636,13 +5638,13 @@ var MatroskaSubtitles;
         var hdr = primary && isHdrPlayback();
         if (primary) PLUGIN_STATE.hdr = hdr;
         el.style.color = OUR_COLORS[ownColor] || primary && (hdr ? OUR_COLORS.hdrsoft : computed && computed.color) || "#d3d3d3";
-        el.style.textShadow = OUR_EDGES[ownEdge] || primary && computed && computed.textShadow || (primary && lampaStroke ? OUR_EDGES.uniform : OUR_EDGES.dropshadow);
+        el.style.textShadow = customEdge ? OUR_EDGES[ownEdge] || "none" : primary && computed && computed.textShadow || (primary && lampaStroke ? OUR_EDGES.uniform : OUR_EDGES.dropshadow);
         el.style.fontFamily = OUR_FONTS[ownFont] || primary && computed && computed.fontFamily || "";
         el.style.fontWeight = ownWeight === "bold" ? "bold" : primary && computed && computed.fontWeight || "normal";
         el.style.lineHeight = primary && computed && computed.lineHeight || "1.25";
         if (primary) {
             toggleClass(el, "has--backdrop", storageOn(S.field("subtitles_backdrop")));
-            toggleClass(el, "has--stroke", storageOn(S.field("subtitles_stroke")));
+            toggleClass(el, "has--stroke", !customEdge && storageOn(S.field("subtitles_stroke")));
         }
         var rawV = S.field(p + "_vpos");
         var v = parseInt(rawV, 10);
@@ -6087,10 +6089,35 @@ var MatroskaSubtitles;
             return {};
         }
     }
+    function hasHdrMarker(value, allowDv) {
+        if (value === undefined || value === null) return false;
+        var signal = String(value);
+        try {
+            signal = decodeURIComponent(signal);
+        } catch (e) {}
+        var marker = allowDv ? "(?:hdr(?:10(?:\\+|plus)?)?|hlg|dolby[ ._-]*vision|dovi|dvhe|dvh1|dv)" : "(?:hdr(?:10(?:\\+|plus)?)?|hlg|dolby[ ._-]*vision|dovi|dvhe|dvh1)";
+        return new RegExp("(?:^|[^a-z0-9])" + marker + "(?:$|[^a-z0-9])", "i").test(signal);
+    }
     function isHdrPlayback() {
         var data = playdata();
-        if (data.hdr === true || /^(?:hdr|hdr10|hlg|dolby[ _-]?vision)$/i.test(cleanMeta(data.hdr))) return true;
+        PLUGIN_STATE.hdrSource = "";
+        if (data.hdr === true || hasHdrMarker(data.hdr, true) || data.dv === true || hasHdrMarker(data.dv, true) || data.dolbyVision === true || hasHdrMarker(data.dolbyVision, true)) {
+            PLUGIN_STATE.hdrSource = "playdata";
+            return true;
+        }
+        var general = data.general || {};
+        if (general.hdr === true || hasHdrMarker(general.hdr, true) || general.dv === true || hasHdrMarker(general.dv, true) || general.dolby_vision === true || hasHdrMarker(general.dolby_vision, true)) {
+            PLUGIN_STATE.hdrSource = "torrent-metadata";
+            return true;
+        }
+        var v = video();
+        var fileSignal = [ data.title, data.filename, data.fname, data.path, data.url, v && (v.currentSrc || v.src) ].join(" ");
+        if (hasHdrMarker(fileSignal, true)) {
+            PLUGIN_STATE.hdrSource = "file-name";
+            return true;
+        }
         var streams = data.ffprobe;
+        if (streams && !Array.isArray(streams) && Array.isArray(streams.streams)) streams = streams.streams;
         if (!Array.isArray(streams)) return false;
         var videoStream = streams.filter(function(stream) {
             return stream && stream.codec_type === "video";
@@ -6102,7 +6129,9 @@ var MatroskaSubtitles;
         } catch (e) {
             signal = [ videoStream.color_transfer, videoStream.color_primaries, videoStream.profile ].join(" ");
         }
-        return /smpte2084|arib-std-b67|\bhlg\b|\bhdr10\b|dolby[ _-]?vision|dovi|dvhe|dvh1/i.test(signal);
+        var detected = /smpte2084|arib-std-b67|\bhlg\b|\bhdr10(?:\+|plus)?\b|dolby[ _-]?vision|dovi|dvhe|dvh1/i.test(signal);
+        if (detected) PLUGIN_STATE.hdrSource = "ffprobe";
+        return detected;
     }
     function ffprobeMetadata(td, ordinal) {
         var streams = playdata().ffprobe;
@@ -6246,6 +6275,175 @@ var MatroskaSubtitles;
             autoPick(v);
         }, 500);
     }
+    var SUBTITLE_SIZES = {
+        large: "120%",
+        normal: "100%",
+        small: "80%",
+        smaller: "70%",
+        tiny: "60%",
+        p55: "55%",
+        micro: "50%",
+        p45: "45%",
+        nano: "40%"
+    };
+    var SUBTITLE_COLORS = {
+        auto: "Auto (SDR white / HDR soft)",
+        hdrsoft: "HDR soft",
+        white: "White",
+        cream: "Cream",
+        lightgray: "Light gray",
+        silver: "Silver",
+        yellow: "Yellow",
+        softyellow: "Soft yellow",
+        gold: "Gold",
+        amber: "Amber",
+        orange: "Orange",
+        mint: "Mint green",
+        softcyan: "Soft cyan",
+        skyblue: "Sky blue",
+        coral: "Coral",
+        pink: "Pink",
+        gray: "Gray",
+        green: "Green",
+        cyan: "Cyan",
+        blue: "Blue",
+        magenta: "Magenta",
+        red: "Red",
+        black: "Black"
+    };
+    var SUBTITLE_EDGES = {
+        default: "Lampa default",
+        none: "None",
+        dropshadow: "Soft shadow",
+        uniform: "Black outline",
+        raised: "Raised",
+        depressed: "Depressed"
+    };
+    var SUBTITLE_FONTS = {
+        default: "Default",
+        typewriter: "Typewriter",
+        print: "Print",
+        console: "Console",
+        cursive: "Cursive",
+        casual: "Casual",
+        smallcaps: "Small caps"
+    };
+    var SUBTITLE_WEIGHTS = {
+        normal: "Normal",
+        bold: "Bold"
+    };
+    var SUBTITLE_VPOS = {
+        "-5": "5% lower",
+        "-4": "4% lower",
+        "-3": "3% lower",
+        "-2": "2% lower",
+        "-1": "1% lower",
+        0: "Standard (online_mod)"
+    };
+    for (var subtitleVp = 1; subtitleVp <= 15; subtitleVp++) SUBTITLE_VPOS[String(subtitleVp)] = subtitleVp + "% higher";
+    SUBTITLE_VPOS["20"] = "20% higher";
+    function showSubtitleSettings(p, onDone) {
+        p = p || "libass";
+        var again = function() {
+            showSubtitleSettings(p, onDone);
+        };
+        var sItems = [];
+        function opt(label, key, opts, def) {
+            key = p + "_" + key;
+            sItems.push({
+                title: label + ": " + (opts[Lampa.Storage.field(key)] || def),
+                sub: key,
+                opts: opts
+            });
+        }
+        opt("Size", "size", SUBTITLE_SIZES, "60%");
+        opt("Color", "color", SUBTITLE_COLORS, "Auto (SDR white / HDR soft)");
+        opt("Outline", "edge", SUBTITLE_EDGES, "Lampa default");
+        opt("Font", "font", SUBTITLE_FONTS, "Default");
+        opt("Weight", "weight", SUBTITLE_WEIGHTS, "Normal");
+        opt("Anchor", "anchor", p === "libass2" ? {
+            bottom: "Bottom",
+            top: "Top",
+            stack: "Above first (follows)",
+            stackfix: "Above first (fixed slot)"
+        } : {
+            bottom: "Bottom",
+            top: "Top"
+        }, "Bottom");
+        opt("Position", "vpos", SUBTITLE_VPOS, p === "libass2" ? "14% higher" : "3% lower (default)");
+        opt("Time shift", "shift", {
+            "-10": "-10s",
+            "-5": "-5s",
+            "-2": "-2s",
+            "-1": "-1s",
+            "-0.5": "-0.5s",
+            0: "0s (off)",
+            .5: "+0.5s",
+            1: "+1s",
+            2: "+2s",
+            5: "+5s",
+            10: "+10s"
+        }, "0s (off)");
+        opt("Background", "bg", {
+            none: "None",
+            black: "Black",
+            gray: "Gray",
+            white: "White",
+            yellow: "Yellow"
+        }, "None");
+        if (p === "libass") {
+            opt("Region size", "region", {
+                auto: "Auto (~6s of stream, default)",
+                2: "2 MB",
+                4: "4 MB",
+                6: "6 MB",
+                8: "8 MB",
+                10: "10 MB",
+                12: "12 MB",
+                16: "16 MB",
+                18: "18 MB",
+                20: "20 MB",
+                24: "24 MB"
+            }, "Auto (~6s of stream, default)");
+            opt("Lookahead", "lookahead", {
+                10: "10s",
+                20: "20s (default)",
+                30: "30s",
+                60: "60s"
+            }, "20s (default)");
+            sItems.push({
+                title: "Debug panels: " + (DEBUG ? "On" : "Off"),
+                dbg: true
+            });
+        }
+        Lampa.Select.show({
+            title: (p === "libass2" ? "Second subtitle settings" : "TorrServer subtitles") + " · v" + LIBASS_SUBS_VERSION,
+            items: sItems,
+            onBack: onDone,
+            onSelect: function(a) {
+                if (a.dbg) {
+                    setDebug(!DEBUG);
+                    again();
+                    return;
+                }
+                Lampa.Select.show({
+                    title: a.title.split(":")[0],
+                    items: Object.keys(a.opts).map(function(k) {
+                        return {
+                            title: a.opts[k] + (Lampa.Storage.field(a.sub) === k ? "  ✓" : ""),
+                            val: k
+                        };
+                    }),
+                    onBack: again,
+                    onSelect: function(o) {
+                        Lampa.Storage.set(a.sub, o.val);
+                        applyOurStyle();
+                        again();
+                    }
+                });
+            }
+        });
+    }
     function showPicker(v, returnTo) {
         if (!window.Lampa || !Lampa.Select) return;
         if (!returnTo) {
@@ -6276,77 +6474,6 @@ var MatroskaSubtitles;
             title: "Off",
             off: true
         });
-        var SIZES = {
-            large: "120%",
-            normal: "100%",
-            small: "80%",
-            smaller: "70%",
-            tiny: "60%",
-            p55: "55%",
-            micro: "50%",
-            p45: "45%",
-            nano: "40%"
-        };
-        var COLORS = {
-            auto: "Auto (SDR white / HDR soft)",
-            hdrsoft: "HDR soft",
-            white: "White",
-            cream: "Cream",
-            lightgray: "Light gray",
-            silver: "Silver",
-            yellow: "Yellow",
-            softyellow: "Soft yellow",
-            gold: "Gold",
-            amber: "Amber",
-            orange: "Orange",
-            mint: "Mint green",
-            softcyan: "Soft cyan",
-            skyblue: "Sky blue",
-            coral: "Coral",
-            pink: "Pink",
-            gray: "Gray",
-            green: "Green",
-            cyan: "Cyan",
-            blue: "Blue",
-            magenta: "Magenta",
-            red: "Red",
-            black: "Black"
-        };
-        var EDGES = {
-            default: "Default",
-            none: "None",
-            dropshadow: "Drop shadow",
-            raised: "Raised",
-            depressed: "Depressed",
-            uniform: "Uniform"
-        };
-        var FONTS = {
-            default: "Default",
-            typewriter: "Typewriter",
-            print: "Print",
-            console: "Console",
-            cursive: "Cursive",
-            casual: "Casual",
-            smallcaps: "Small caps"
-        };
-        var WEIGHTS = {
-            normal: "Normal",
-            bold: "Bold"
-        };
-        var VPOS = {
-            "-5": "5% lower",
-            "-4": "4% lower",
-            "-3": "3% lower",
-            "-2": "2% lower",
-            "-1": "1% lower",
-            0: "Standard (online_mod)"
-        };
-        for (var vp = 1; vp <= 15; vp++) VPOS[String(vp)] = vp + "% higher";
-        VPOS["20"] = "20%";
-        var ANCHORS = {
-            bottom: "Bottom",
-            top: "Top"
-        };
         items.push({
             title: "Second subtitle…",
             second: true
@@ -6368,109 +6495,6 @@ var MatroskaSubtitles;
                     Lampa.Controller.focus(returnTo.focus);
                 } catch (e) {}
             }
-        }
-        function showSettings(p, onDone) {
-            p = p || "libass";
-            var again = function() {
-                showSettings(p, onDone);
-            };
-            var sItems = [];
-            function opt(label, key, opts, def) {
-                key = p + "_" + key;
-                sItems.push({
-                    title: label + ": " + (opts[Lampa.Storage.field(key)] || def),
-                    sub: key,
-                    opts: opts
-                });
-            }
-            opt("Size", "size", SIZES, "60%");
-            opt("Color", "color", COLORS, "Auto (SDR white / HDR soft)");
-            opt("Edge", "edge", EDGES, "Drop shadow");
-            opt("Font", "font", FONTS, "Default");
-            opt("Weight", "weight", WEIGHTS, "Normal");
-            opt("Anchor", "anchor", p === "libass2" ? {
-                bottom: "Bottom",
-                top: "Top",
-                stack: "Above first (follows)",
-                stackfix: "Above first (fixed slot)"
-            } : ANCHORS, "Bottom");
-            opt("Position", "vpos", VPOS, p === "libass2" ? "14% higher" : "3% lower (default)");
-            var SHIFTS = {
-                "-10": "-10s",
-                "-5": "-5s",
-                "-2": "-2s",
-                "-1": "-1s",
-                "-0.5": "-0.5s",
-                0: "0s (off)",
-                .5: "+0.5s",
-                1: "+1s",
-                2: "+2s",
-                5: "+5s",
-                10: "+10s"
-            };
-            var BGS = {
-                none: "None",
-                black: "Black",
-                gray: "Gray",
-                white: "White",
-                yellow: "Yellow"
-            };
-            opt("Time shift", "shift", SHIFTS, "0s (off)");
-            opt("Background", "bg", BGS, "None");
-            if (p === "libass") {
-                opt("Region size", "region", {
-                    auto: "Auto (~6s of stream, default)",
-                    2: "2 MB",
-                    4: "4 MB",
-                    6: "6 MB",
-                    8: "8 MB",
-                    10: "10 MB",
-                    12: "12 MB",
-                    16: "16 MB",
-                    18: "18 MB",
-                    20: "20 MB",
-                    24: "24 MB"
-                }, "Auto (~6s of stream, default)");
-                opt("Lookahead", "lookahead", {
-                    10: "10s",
-                    20: "20s (default)",
-                    30: "30s",
-                    60: "60s"
-                }, "20s (default)");
-                sItems.push({
-                    title: "Debug panels: " + (DEBUG ? "On" : "Off"),
-                    dbg: true
-                });
-            }
-            Lampa.Select.show({
-                title: (p === "libass2" ? "Second subtitle settings" : "Subtitle settings") + " · v" + LIBASS_SUBS_VERSION,
-                items: sItems,
-                onBack: onDone || function() {
-                    showPicker(v, returnTo);
-                },
-                onSelect: function(a) {
-                    if (a.dbg) {
-                        setDebug(!DEBUG);
-                        again();
-                        return;
-                    }
-                    Lampa.Select.show({
-                        title: a.title.split(":")[0],
-                        items: Object.keys(a.opts).map(function(k) {
-                            return {
-                                title: a.opts[k] + (Lampa.Storage.field(a.sub) === k ? "  ✓" : ""),
-                                val: k
-                            };
-                        }),
-                        onBack: again,
-                        onSelect: function(o) {
-                            Lampa.Storage.set(a.sub, o.val);
-                            applyOurStyle();
-                            again();
-                        }
-                    });
-                }
-            });
         }
         function showSecond() {
             var list = Object.keys(tracks).map(function(n) {
@@ -6500,7 +6524,7 @@ var MatroskaSubtitles;
                 },
                 onSelect: function(a) {
                     if (a.settings) {
-                        showSettings("libass2", showSecond);
+                        showSubtitleSettings("libass2", showSecond);
                         return;
                     }
                     if (a.off) {
@@ -6566,7 +6590,9 @@ var MatroskaSubtitles;
                     return;
                 }
                 if (a.settings) {
-                    showSettings();
+                    showSubtitleSettings("libass", function() {
+                        showPicker(v, returnTo);
+                    });
                     return;
                 }
                 if (a.second) {
@@ -7127,6 +7153,8 @@ var MatroskaSubtitles;
         PLUGIN_STATE.selectedTrack = -1;
         PLUGIN_STATE.selectedLanguage = "";
         PLUGIN_STATE.nativeDisabled = false;
+        PLUGIN_STATE.hdr = false;
+        PLUGIN_STATE.hdrSource = "";
         segBase = 0;
         cueIndex = null;
         duration = 0;
@@ -7166,7 +7194,14 @@ var MatroskaSubtitles;
         torrentPlayback = true;
         PLUGIN_STATE.torrentPlayback = true;
         if (src === curSrc) {
-            if (active()) hookSubsButton();
+            if (active()) {
+                hookSubsButton();
+                var selectedColor = Lampa.Storage.field("libass_color");
+                if (!selectedColor || selectedColor === "auto") {
+                    var hdrNow = isHdrPlayback();
+                    if (hdrNow !== PLUGIN_STATE.hdr) applyOurStyle();
+                }
+            }
             return;
         }
         stop();
@@ -7215,6 +7250,25 @@ var MatroskaSubtitles;
         Lampa.SettingsApi.addParam({
             component: "player",
             param: {
+                name: "libass_edge",
+                type: "select",
+                values: {
+                    default: "Как в Lampa",
+                    none: "Без контура",
+                    dropshadow: "Мягкая тень",
+                    uniform: "Чёрный контур"
+                },
+                default: "default"
+            },
+            field: {
+                name: "Контур",
+                description: "Оформление края букв во встроенных субтитрах TorrServer"
+            },
+            onChange: applyOurStyle
+        });
+        Lampa.SettingsApi.addParam({
+            component: "player",
+            param: {
                 name: "libass_vpos",
                 type: "select",
                 values: {
@@ -7255,11 +7309,28 @@ var MatroskaSubtitles;
             var origShow = Lampa.Select.show;
             Lampa.Select.__libass = true;
             Lampa.Select.show = function(params) {
-                var subsTitle = active() && Lampa.Lang ? Lampa.Lang.translate("settings_player_subs") : null;
-                if (subsTitle && params && params.items && params.items.length) {
-                    params.items = params.items.filter(function(it) {
-                        return it.title !== subsTitle;
+                if (active() && params && params.items && params.items.some(function(it) {
+                    return it && it.method === "subs";
+                })) {
+                    var originalSelect = params.onSelect;
+                    params = Object.assign({}, params);
+                    params.items = params.items.map(function(it) {
+                        if (!it || it.method !== "subs") return it;
+                        var replacement = Object.assign({}, it);
+                        replacement.title = (it.title || "Subtitles") + " · TorrServer";
+                        replacement.subtitle = "Color, outline and position";
+                        replacement.__libassSettings = true;
+                        return replacement;
                     });
+                    params.onSelect = function(item) {
+                        if (!item || !item.__libassSettings) return originalSelect && originalSelect(item);
+                        params.items.forEach(function(candidate) {
+                            if (candidate) candidate.selected = candidate === item;
+                        });
+                        showSubtitleSettings("libass", function() {
+                            origShow.call(Lampa.Select, params);
+                        });
+                    };
                 }
                 return origShow.call(this, params);
             };
